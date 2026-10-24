@@ -72,8 +72,8 @@ export default function App() {
     if (!supabase) { setLoading(false); return; }
     setLoading(true);
     const [c, p] = await Promise.all([
-      supabase.from("collections").select("*").eq("status", "active").order("sort_order"),
-      supabase.from("products").select("*, product_variants(*)").eq("status", "active").not("published_at", "is", null).order("created_at", { ascending: false }),
+      supabase.from("collections").select("*").order("sort_order"),
+      supabase.from("products").select("*, product_variants(*), collections(name,slug)").order("created_at", { ascending: false }),
     ]);
     if (c.error) console.warn("DAWG collections query:", c.error.message);
     if (p.error) console.warn("DAWG products query:", p.error.message);
