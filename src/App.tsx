@@ -95,7 +95,7 @@ export default function App() {
       supabase.auth.getSession().then(({ data }) => { setSession(data.session); void checkAdmin(data.session?.user.id); });
       const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
         setSession(next);
-        window.setTimeout(() => { void checkAdmin(next?.user.id); }, 0);
+        window.setTimeout(() => { void checkAdmin(next?.user.id); void refreshCatalogue(); }, 0);
       });
       void refreshCatalogue();
       return () => { window.removeEventListener("hashchange", onHash); listener.subscription.unsubscribe(); };
