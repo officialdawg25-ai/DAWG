@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown,
-  CircleUserRound, Heart, Menu, Minus, Plus, Search, ShieldCheck, ShoppingBag,
+  ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Check,
+  CircleUserRound, Menu, Minus, Plus, Search, ShieldCheck, ShoppingBag,
   SlidersHorizontal, X, LogOut, Package, Settings, LayoutDashboard, Shirt,
-  Layers3, Truck, CreditCard, ExternalLink, LoaderCircle
+  Layers3, Truck, CreditCard, LoaderCircle
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, supabaseConfigured } from "./lib/supabase";
@@ -231,7 +231,7 @@ export default function App() {
         <div className="collection-grid">{collectionsFallback.map((c, i) => { const db = collections.find(x => x.name.toLowerCase() === c.name.toLowerCase()); return <button key={c.name} className={`collection-tile tile-${i + 1}`} onClick={() => go("shop", db?.slug)}><span className="tile-number">0{i + 1} / COLLECTION</span><span className="tile-glyph">{c.name.slice(0,1)}</span><span className="tile-bottom"><span><strong>{c.name}</strong><small>{c.descriptor}</small></span><ArrowUpRight size={18}/></span></button>; })}</div>
       </section>
       <section className="product-section section-pad"><div className="section-heading"><div><p className="eyebrow">THE CURRENT LINEUP</p><h2>Made to move<br/><em>with intention.</em></h2></div><button className="text-link" onClick={() => go("shop")}>Shop all <ArrowRight size={15}/></button></div>
-        {loading ? <div className="empty-state"><LoaderCircle className="spin" size={22}/><p>Loading the collection…</p></div> : shownFeatured.length ? <ProductGrid products={shownFeatured} onOpen={p => go("product", p.slug)} onAdd={addToCart}/> : <div className="empty-catalogue"><span className="empty-mark">D.</span><div><p className="eyebrow">THE NEXT DROP IS BEING BUILT</p><h3>Good things take work.</h3><p>There are no published products just yet. The DAWG catalogue will appear here when products are ready.</p></div><button className="button-outline-dark" onClick={() => go("collections")}>Explore the collections <ArrowRight size={15}/></button></div>}
+        {loading ? <div className="empty-state"><LoaderCircle className="spin" size={22}/><p>Loading the collection…</p></div> : shownFeatured.length ? <ProductGrid products={shownFeatured} onOpen={p => go("product", p.slug)} /> : <div className="empty-catalogue"><span className="empty-mark">D.</span><div><p className="eyebrow">THE NEXT DROP IS BEING BUILT</p><h3>Good things take work.</h3><p>There are no published products just yet. The DAWG catalogue will appear here when products are ready.</p></div><button className="button-outline-dark" onClick={() => go("collections")}>Explore the collections <ArrowRight size={15}/></button></div>}
       </section>
       <section className="closing-banner"><div><p className="eyebrow">FOR THE WORK IN PROGRESS</p><h2>Become who<br/><em>you said you'd be.</em></h2></div><button className="button-light" onClick={() => go("story")}>The DAWG mindset <ArrowUpRight size={16}/></button><span className="closing-stamp">D / A / W / G</span></section></>}
 
@@ -270,7 +270,7 @@ export default function App() {
   </div>;
 }
 
-function ProductGrid({ products, onOpen, onAdd }: { products: Product[]; onOpen: (p: Product) => void; onAdd: (p: Product) => void }) {
+function ProductGrid({ products, onOpen }: { products: Product[]; onOpen: (p: Product) => void }) {
   return <div className="product-grid">{products.map((p, i) => <article className="product-card" key={p.id}><button className="product-card-image" onClick={() => onOpen(p)} aria-label={`View ${p.name}`}>{p.image_url ? <img loading="lazy" src={p.image_url} alt={p.name}/> : <div className={`product-placeholder product-tone-${i % 4}`}><span>DAWG</span><small>{p.collections?.name || "CLOTHING"}</small></div>}<span className="product-view">View piece <ArrowUpRight size={14}/></span></button><div className="product-card-info"><div><p className="product-category">{p.collections?.name || "DAWG CLOTHING"}</p><button className="product-title" onClick={() => onOpen(p)}>{p.name}</button><span className="product-price">{money(p.price_cents, p.currency)}</span></div><button className="quick-add" aria-label={`View ${p.name} options`} onClick={() => onOpen(p)}><Plus size={17}/></button></div></article>)}</div>;
 }
 function VariantPicker({ product, onAdd }: { product: Product; onAdd: (v?: Variant) => void }) {
