@@ -156,7 +156,7 @@ export default function App() {
   async function signOut() { if (supabase) await supabase.auth.signOut(); setSession(null); setIsAdmin(false); go("home"); }
   function openAuth(mode: "signin" | "signup" | "reset" = "signin") { setAuthMode(mode); setAuthOpen(true); }
   function addToCart(product: Product, variant?: Variant) {
-    if (!variant) { setNotice("This product has no available inventory variant. Please contact the store team."); return; }\n    if (product.has_variants && !variant) { setNotice("Choose a size or colour on the product page first."); return; }
+    if (!variant) { setNotice("This product has no available inventory variant. Please contact the store team."); return; }
     if (variant?.track_inventory && variant.stock_on_hand < 1) { setNotice("This variant is currently out of stock."); return; }
     setCart(old => {
       const key = variant?.id || product.id;
@@ -194,7 +194,9 @@ export default function App() {
   async function saveProduct(e: FormEvent) {
     e.preventDefault(); if (!supabase || !isAdmin) { setNotice("An authorised administrator session is required."); return; }
     const price = Number(productPrice);
-    if (!productName.trim() || !Number.isFinite(price) || price < 0 || !Number.isInteger(Math.round(price * 100))) { setNotice("Enter a product name and a valid non-negative price."); return; }\n    if (productStatus === "active" && price <= 0) { setNotice("Enter the confirmed retail price before publishing."); return; }\n    if (productStatus === "active" && !productImage.trim()) { setNotice("Add approved product imagery before publishing this product."); return; }
+    if (!productName.trim() || !Number.isFinite(price) || price < 0 || !Number.isInteger(Math.round(price * 100))) { setNotice("Enter a product name and a valid non-negative price."); return; }
+    if (productStatus === "active" && price <= 0) { setNotice("Enter the confirmed retail price before publishing."); return; }
+    if (productStatus === "active" && !productImage.trim()) { setNotice("Add approved product imagery before publishing this product."); return; }
     setBusy(true);
     try {
       const payload = { name: productName.trim(), slug: slugify(productName), description: productDescription.trim() || null, collection_id: productCollection || null, price_cents: Math.round(price * 100), currency: "ZAR", image_url: productImage.trim() || null, sku: productSku.trim() || null, has_variants: Boolean(productSize.trim() || productColour.trim()), status: productStatus, published_at: productStatus === "active" ? (editingProduct?.published_at || new Date().toISOString()) : null };
@@ -298,8 +300,8 @@ function ProductGrid({ products, onOpen }: { products: Product[]; onOpen: (p: Pr
 function VariantPicker({ product, onAdd }: { product: Product; onAdd: (v?: Variant) => void }) {
   const variants = (product.product_variants || []).filter(v => v.status === "active");
   const [selected, setSelected] = useState(variants[0]?.id || "");
-  const variant = variants.find(v => v.id === selected);
-  const hasVariants = Boolean(product.product_variants?.length);
-  const unavailable = hasVariants && (!variant || (variant.track_inventory && variant.stock_on_hand < 1));
+  const variant = variants.find(v => v.id === selected) || variants[0];
+  const hasVariants = product.has_variants;
+  const unavailable = !variant || (variant.track_inventory && variant.stock_on_hand < 1);
   return <div className="variant-picker">{hasVariants ? (variants.length > 0 ? <><label>Size / colour<select value={variant?.id || selected} onChange={e => setSelected(e.target.value)}>{variants.map(v => <option key={v.id} value={v.id} disabled={v.track_inventory && v.stock_on_hand < 1}>{[v.size, v.colour].filter(Boolean).join(" / ") || "Standard"}{v.track_inventory && v.stock_on_hand < 1 ? " — Sold out" : ""}</option>)}</select></label><p className="variant-stock">{variant?.track_inventory ? (variant.stock_on_hand > 0 ? "Available" : "Sold out") : "Availability confirmed at checkout"}</p></> : <p className="variant-stock">No available variants. Please contact the store team.</p>) : <p className="variant-stock">{variant ? (variant.stock_on_hand > 0 ? "Available" : "Sold out") : "Unavailable"}</p>}<button className="button-dark add-to-bag" disabled={unavailable} onClick={() => onAdd(variant)}>{unavailable ? "Sold out" : "Add to bag"} <ShoppingBag size={16}/></button><p className="detail-note"><Truck size={16}/> Shipping and returns information will be published before launch.</p></div>;
 }
