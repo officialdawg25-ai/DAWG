@@ -68,34 +68,55 @@ export default function App() {
   const [collectionSlug, setCollectionSlug] = useState("");
   const [collectionStatus, setCollectionStatus] = useState<"draft" | "active">("draft");
 
-  const refreshCatalogue = useCallback(async () => {
+  const refreshCatalogue = useCallback(async (forAdmin = false) => {
     if (!supabase) { setLoading(false); return; }
     setLoading(true);
     const [c, p] = await Promise.all([
       supabase.from("collections").select("*").order("sort_order"),
-      supabase.from("products").select("*, product_variants(*), collections(name,slug)").order("created_at", { ascending: false }),
+      supabase.from("products").select("*, collections(name,slug)").order("created_at", { ascending: false }),
     ]);
     if (c.error) console.warn("DAWG collections query:", c.error.message);
     if (p.error) console.warn("DAWG products query:", p.error.message);
+    const productRows = (p.data || []) as Omit<Product, "product_variants">[];
+    const ids = productRows.map(product => product.id);
+    let variantRows: (Variant & { available?: boolean })[] = [];
+    if (ids.length) {
+      if (forAdmin) {
+        const v = await supabase.from("product_variants").select("*").in("product_id", ids);
+        if (v.error) console.warn("DAWG staff variants query:", v.error.message);
+        variantRows = (v.data || []) as Variant[];
+      } else {
+        const v = await supabase.from("public_product_variants").select("*").in("product_id", ids);
+        if (v.error) console.warn("DAWG public availability query:", v.error.message);
+        variantRows = ((v.data || []) as Array<Omit<Variant, "stock_on_hand" | "stock_reserved" | "track_inventory"> & { available: boolean }>).map(variant => ({
+          ...variant,
+          stock_on_hand: variant.available ? 99 : 0,
+          stock_reserved: 0,
+          track_inventory: true,
+        }));
+      }
+    }
     setCollections((c.data || []) as Collection[]);
-    setProducts((p.data || []) as Product[]);
+    setProducts(productRows.map(product => ({ ...product, product_variants: variantRows.filter(variant => variant.product_id === product.id) })) as Product[]);
     setLoading(false);
   }, []);
 
-  const checkAdmin = useCallback(async (userId?: string) => {
-    if (!supabase || !userId) { setIsAdmin(false); return; }
+  const checkAdmin = useCallback(async (userId?: string): Promise<boolean> => {
+    if (!supabase || !userId) { setIsAdmin(false); return false; }
     const { data, error } = await supabase.from("staff_roles").select("role").eq("user_id", userId).in("role", ["owner", "admin", "manager"]).maybeSingle();
-    setIsAdmin(!error && Boolean(data));
+    const allowed = !error && Boolean(data);
+    setIsAdmin(allowed);
+    return allowed;
   }, []);
 
   useEffect(() => {
     const onHash = () => { setRoute(parseRoute()); setMobileMenu(false); };
     window.addEventListener("hashchange", onHash);
     if (supabase) {
-      supabase.auth.getSession().then(({ data }) => { setSession(data.session); void checkAdmin(data.session?.user.id); });
+      supabase.auth.getSession().then(async ({ data }) => { setSession(data.session); const allowed = await checkAdmin(data.session?.user.id); await refreshCatalogue(allowed); });
       const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
         setSession(next);
-        window.setTimeout(() => { void checkAdmin(next?.user.id); void refreshCatalogue(); }, 0);
+        window.setTimeout(async () => { const allowed = await checkAdmin(next?.user.id); await refreshCatalogue(allowed); }, 0);
       });
       void refreshCatalogue();
       return () => { window.removeEventListener("hashchange", onHash); listener.subscription.unsubscribe(); };
@@ -189,7 +210,7 @@ export default function App() {
         if (oldVariant) { const { error } = await supabase.from("product_variants").update(variant).eq("id", oldVariant.id); if (error) throw error; }
         else { const { error } = await supabase.from("product_variants").insert(variant); if (error) throw error; }
       }
-      setProductEditor(false); setNotice("Product saved."); await refreshCatalogue();
+      setProductEditor(false); setNotice("Product saved."); await refreshCatalogue(isAdmin);
     } catch (err) { setNotice(err instanceof Error ? err.message : "Product could not be saved. Check admin permissions and database setup."); }
     finally { setBusy(false); }
   }
@@ -199,7 +220,7 @@ export default function App() {
     try {
       const { error } = await supabase.from("collections").insert({ name: collectionName.trim(), slug: slugify(collectionSlug || collectionName), description: collectionDescription.trim() || null, status: collectionStatus, sort_order: collections.length + 1 });
       if (error) throw error;
-      setCollectionEditor(false); setCollectionName(""); setCollectionSlug(""); setCollectionDescription(""); setNotice("Collection saved."); await refreshCatalogue();
+      setCollectionEditor(false); setCollectionName(""); setCollectionSlug(""); setCollectionDescription(""); setNotice("Collection saved."); await refreshCatalogue(isAdmin);
     } catch (err) { setNotice(err instanceof Error ? err.message : "Collection could not be saved."); }
     finally { setBusy(false); }
   }
