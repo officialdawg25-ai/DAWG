@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ArrowLeft, ArrowRight, ArrowUpRight, Check,
-  CircleUserRound, Menu, Minus, Plus, Search, ShieldCheck, ShoppingBag,
+  UserRound, Menu, Minus, Plus, Search, ShieldCheck, ShoppingBag,
   SlidersHorizontal, X, LogOut, Package, Settings, LayoutDashboard, Shirt,
   Layers3, Truck, CreditCard, LoaderCircle, Image as ImageIcon, Save, Eye
 } from "lucide-react";
@@ -359,9 +359,9 @@ export default function App() {
         <button onClick={() => go("shop")}>Shop all</button><button onClick={() => go("collections")}>Collections</button><button onClick={() => go("shop")}>New arrivals</button><button onClick={() => go("story")}>The mindset</button>
       </nav>
       <div className="header-actions">
-        <label className="search-control"><Search size={17}/><input aria-label="Search products" placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); if (e.target.value) go("shop"); }}/>{search && <button aria-label="Clear search" onClick={() => setSearch("")}><X size={14}/></button>}</label>
-        <button className="header-icon account-icon" aria-label="Account" onClick={() => session ? go("account") : openAuth("signin")}><CircleUserRound size={20}/></button>
-        <button className="header-icon bag-icon" aria-label={`Shopping bag, ${cartCount} items`} onClick={() => go("bag")}><ShoppingBag size={20}/>{cartCount > 0 && <span>{cartCount}</span>}</button>
+        <label className="search-control" aria-label="Search the DAWG store"><Search size={19} strokeWidth={1.5}/><input aria-label="Search products" placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); if (e.target.value) go("shop"); }}/>{search && <button aria-label="Clear search" onClick={() => setSearch("")}><X size={14} strokeWidth={1.5}/></button>}</label>
+        <button className="header-icon account-icon" aria-label="Account" title="Account" onClick={() => session ? go("account") : openAuth("signin")}><UserRound size={19} strokeWidth={1.5}/></button>
+        <button className="header-icon bag-icon" aria-label={`Shopping bag, ${cartCount} items`} title="Shopping bag" onClick={() => go("bag")}><ShoppingBag size={19} strokeWidth={1.5}/>{cartCount > 0 && <span>{cartCount}</span>}</button>
       </div>
     </header>
 
@@ -372,7 +372,7 @@ export default function App() {
         {heroPublished?.mediaUrl && heroPublished.mediaType === "image" && <img className="hero-media" src={heroPublished.mediaUrl} alt={heroPublished.mediaAlt || ""} fetchPriority="high" decoding="async" style={{objectPosition:heroPublished.objectPosition||"center center"}}/>}
         {heroPublished?.mediaUrl && heroPublished.mediaType === "video" && <video className="hero-media" autoPlay={!reduceMotion} controls={reduceMotion} muted loop playsInline preload={reduceMotion?"none":"metadata"} poster={heroPublished.posterUrl||undefined} aria-label={heroPublished.mediaAlt||"DAWG campaign film"}><source src={heroPublished.mediaUrl}/></video>}
         <div className="hero-scrim" aria-hidden="true"/>
-        <div className="hero-main"><div className="hero-heading-wrap"><p className="hero-index">THE STANDARD IS EARNED</p><h1 id="dawg-hero-title"><span className="hero-line hero-line-one">{heroPublished?.headlineFirst||defaultHeroConfig.headlineFirst}</span><span className="hero-line hero-line-two">{heroPublished?.headlineSecond||defaultHeroConfig.headlineSecond}</span></h1></div><div className="hero-aside"><span className="hero-rule"/><p>{heroPublished?.supportingText||defaultHeroConfig.supportingText}</p><button className="button-dark" onClick={()=>go(heroPublished?.primaryDestination||"shop")}>{heroPublished?.primaryLabel||defaultHeroConfig.primaryLabel} <ArrowRight size={16}/></button><button className="hero-secondary" onClick={()=>go(heroPublished?.secondaryDestination||"story")}>{heroPublished?.secondaryLabel||defaultHeroConfig.secondaryLabel} <ArrowUpRight size={15}/></button></div></div>
+        <div className="hero-main"><div className="hero-heading-wrap"><p className="hero-index">THE STANDARD IS EARNED</p><h1 id="dawg-hero-title"><span className="hero-line hero-line-one">{heroPublished?.headlineFirst||defaultHeroConfig.headlineFirst}</span><span className="hero-line hero-line-two">{heroPublished?.headlineSecond||defaultHeroConfig.headlineSecond}</span></h1></div><div className="hero-aside"><span className="hero-rule"/><p>{heroPublished?.supportingText||defaultHeroConfig.supportingText}</p><div className="hero-ctas"><button className="button-dark" onClick={()=>go(heroPublished?.primaryDestination||"shop")}>{heroPublished?.primaryLabel||defaultHeroConfig.primaryLabel} <ArrowRight size={16} strokeWidth={1.5}/></button><button className="hero-secondary" onClick={()=>go(heroPublished?.secondaryDestination||"story")}>{heroPublished?.secondaryLabel||defaultHeroConfig.secondaryLabel} <ArrowUpRight size={15} strokeWidth={1.5}/></button></div></div></div>
       </section>
       <section className="manifesto-strip"><span className="strip-label">THE DAWG CODE</span><p>Discipline is a decision.<br/><span>Excellence is a practice.</span></p><button onClick={() => go("story")}>Read our philosophy <ArrowUpRight size={15}/></button></section>
       <section className="collection-section section-pad"><div className="section-heading"><div><p className="eyebrow">THE COLLECTIONS</p><h2>Five expressions.<br/><em>One standard.</em></h2></div><button className="text-link" onClick={() => go("collections")}>Explore all collections <ArrowRight size={15}/></button></div>
