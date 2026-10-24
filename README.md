@@ -1,47 +1,53 @@
-# DAWG
+# DAWG Clothing
 
-DAWG is a React + TypeScript + Vite application deployed on Cloudflare Workers, with Supabase for authentication and persistent application data.
+DAWG Clothing is a premium editorial fashion storefront built on React, TypeScript, Vite, Cloudflare, and Supabase.
 
-## Current foundation
+**Brand motto:** “Success is earned & not given.”  
+**Philosophy:** Drive. Ambition. Work. Growth.
 
-- Responsive DAWG interface and navigation
-- Supabase email/password sign-up and sign-in wiring (requires project environment variables)
-- Cloudflare Workers/Vite deployment configuration
-- No fake member counts, feed posts, or database records
-- No Supabase service-role key in browser code
+> This implementation is on the feature branch `feature/dawg-clothing-commerce`. The repository's `main` branch still contains the existing DAWG community application. Do not merge or deploy the clothing store over the current application until the intended product direction is confirmed and the pull request is reviewed.
+
+## Current scope
+
+- Responsive storefront and navigation.
+- Homepage editorial hero, brand story, collection browsing, shop, product detail pages, and local shopping bag.
+- Supabase Auth sign-up, sign-in, and password-reset entry points.
+- Supabase-backed catalogue and role-gated product/collection management.
+- Product image upload to the `product-media` bucket.
+- Additive commerce schema and restrictive RLS policies.
+- Initial collection records: KENN, GRIT, IVY, ROAM, HOWL.
+- Architecture and launch blockers: [docs/DAWG-CLOTHING-ARCHITECTURE.md](docs/DAWG-CLOTHING-ARCHITECTURE.md).
 
 ## Local development
 
 Requirements: Node.js 20.19+ or 22.12+ and npm.
 
-1. Install dependencies: `npm install`
-2. Copy `.env.example` to `.env.local`
-3. Set `VITE_SUPABASE_URL` to your Supabase project URL.
-4. Set `VITE_SUPABASE_ANON_KEY` to your publishable key (or legacy anon key).
-5. Start: `npm run dev`
-6. Check types: `npm run typecheck`
-7. Build: `npm run build`
+1. Install dependencies: `npm install`.
+2. Copy `.env.example` to `.env.local`.
+3. Set `VITE_SUPABASE_URL` to the actual DAWG Supabase project URL.
+4. Set `VITE_SUPABASE_ANON_KEY` to the publishable key (or legacy anon key).
+5. Run `npm run dev`.
+6. Run `npm run typecheck`.
+7. Run `npm run build`.
 
-Never put a Supabase service_role or secret key in a VITE_ variable. VITE_ variables are exposed to the browser.
+Never place a Supabase `service_role` or secret key in a `VITE_` variable. Values prefixed with `VITE_` are exposed to the browser.
 
-## Cloudflare Workers deployment
+## Cloudflare
 
-This repository uses the Cloudflare Vite plugin and Wrangler configuration.
+This project uses the Cloudflare Vite plugin and Wrangler configuration.
 
-- Build command: `npm run build`
-- Deploy command: `npx wrangler deploy`
-- Local development: `npm run dev`
+- Build: `npm run build`
+- Deploy: `npx wrangler deploy`
+- Local dev: `npm run dev`
 
-Add the two Supabase values to the Cloudflare Workers Builds build environment. They are public client configuration, not secrets. Configure Supabase Auth Site URL and allowed redirect URLs to include the actual deployed DAWG origin before testing email confirmation or password recovery.
+Use a preview deployment first. Configure the actual deployed origin in Supabase Auth Site URL and allowed redirect URLs before testing verification and password recovery.
 
-## Security and next milestones
+## Database and access
 
-The UI is a foundation, not a complete production platform. Before enabling community posts, messaging, profile editing or other user data:
-1. Inspect the existing Supabase project and schema.
-2. Design only the required tables, relationships and indexes.
-3. Enable and test row-level security policies for every user-owned table.
-4. Verify authorization with multiple test accounts.
-5. Add moderation, abuse reporting, account deletion and privacy flows.
-6. Add tests and verify deployed behavior.
+The migrations in `supabase/migrations/` add the commerce schema and RLS policies. They have been applied to the configured DAWG Supabase project. Staff access is controlled by `public.staff_roles`; customers must not be able to self-assign roles. The owner role must be granted through a trusted administrative session after the owner account exists.
 
-Do not treat a successful frontend build as proof that backend functionality is production-ready.
+## Important: not ready to take live orders
+
+No payment provider is configured or verified. The bag does not collect money or create paid orders. Do not launch live commerce until a trusted server-side checkout, authoritative pricing, atomic stock reservation, provider sandbox testing, signed/idempotent webhook verification, refund reconciliation, shipping rules, fulfilment, transactional emails, and policy review are complete.
+
+Do not invent products, pricing, reviews, stock claims, shipping promises, or customer/order records. See the architecture document for evidence and remaining work.
