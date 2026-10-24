@@ -364,7 +364,16 @@ export default function App() {
     setCollectionStoryTitle(c?.story_title || `The story behind ${c?.name || "this collection"}`); setCollectionStoryContent(c?.story_content || "");
     setCollectionEditor(true);
   }
-  async function uploadCollectionArt(file?: File) {\n    if (!file || !supabase || !isAdmin) return;\n    const mediaType = ["image/jpeg","image/png","image/webp","image/avif"].includes(file.type) ? "image" : ["video/mp4","video/webm"].includes(file.type) ? "video" : null;\n    if (!mediaType) { setNotice("Choose a JPEG, PNG, WebP, AVIF, MP4 or WebM file."); return; }\n    if (file.size > 50 * 1024 * 1024) { setNotice("Collection art must be 50 MB or smaller."); return; }\n    setCollectionMediaUploading(true);\n    try { const ext=file.name.split(".").pop()?.toLowerCase() || (mediaType === "video" ? "mp4" : "webp"); const path=`collection-art/${crypto.randomUUID()}.${ext}`; const {error}=await supabase.storage.from("collection-art-media").upload(path,file,{upsert:false,contentType:file.type,cacheControl:"31536000"}); if(error)throw error; setCollectionArtUrl(supabase.storage.from("collection-art-media").getPublicUrl(path).data.publicUrl); setCollectionArtType(mediaType); setNotice("Collection art uploaded."); }\n    catch(err) { setNotice(err instanceof Error ? err.message : "Collection art upload failed."); } finally { setCollectionMediaUploading(false); }\n  }\n  async function uploadCollectionBanner(file?: File) {
+  async function uploadCollectionArt(file?: File) {
+    if (!file || !supabase || !isAdmin) return;
+    const mediaType = ["image/jpeg","image/png","image/webp","image/avif"].includes(file.type) ? "image" : ["video/mp4","video/webm"].includes(file.type) ? "video" : null;
+    if (!mediaType) { setNotice("Choose a JPEG, PNG, WebP, AVIF, MP4 or WebM file."); return; }
+    if (file.size > 50 * 1024 * 1024) { setNotice("Collection art must be 50 MB or smaller."); return; }
+    setCollectionMediaUploading(true);
+    try { const ext=file.name.split(".").pop()?.toLowerCase() || (mediaType === "video" ? "mp4" : "webp"); const path=`collection-art/${crypto.randomUUID()}.${ext}`; const {error}=await supabase.storage.from("collection-art-media").upload(path,file,{upsert:false,contentType:file.type,cacheControl:"31536000"}); if(error)throw error; setCollectionArtUrl(supabase.storage.from("collection-art-media").getPublicUrl(path).data.publicUrl); setCollectionArtType(mediaType); setNotice("Collection art uploaded."); }
+    catch(err) { setNotice(err instanceof Error ? err.message : "Collection art upload failed."); } finally { setCollectionMediaUploading(false); }
+  }
+  async function uploadCollectionBanner(file?: File) {
     if (!file || !supabase || !isAdmin) return;
     if (!["image/jpeg","image/png","image/webp","image/avif"].includes(file.type) || file.size > 15*1024*1024) { setNotice("Choose a JPEG, PNG, WebP or AVIF image no larger than 15 MB."); return; }
     setCollectionMediaUploading(true);
