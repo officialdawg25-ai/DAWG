@@ -33,7 +33,7 @@ The pre-existing `main` branch is a DAWG community/social experience. The clothi
 
 ## Migration
 
-Migration file: `supabase/migrations/20261024090000_dawg_commerce_foundation.sql`
+Migration files: `supabase/migrations/20261024090000_dawg_commerce_foundation.sql`, `20261024100000_dawg_commerce_policy_index_hardening.sql`, `20261024110000_restrict_rls_auto_enable_execute.sql`, `20261024120000_public_variant_availability_view.sql`, and `20261024130000_safe_public_variant_projection.sql`.
 
 It was applied to the configured DAWG Supabase project through the connected Supabase tool. It is additive and does not delete or rewrite existing user data. The migration creates the five initial collection records (KENN, GRIT, IVY, ROAM, HOWL), but does not create fake products or orders.
 
@@ -51,7 +51,7 @@ No administrator is created automatically. After creating the intended owner acc
 - No complete customer profile/address/order-history workflow, discount redemption engine, newsletter consent/unsubscribe workflow, CMS, or audit-event automation.
 - The current catalogue editor provides a single variant per product; multi-variant management, media gallery ordering, size charts, bulk operations, scheduling, and full merchandising tools remain future work.
 - No products, approved product photography, actual retail prices, sizing measurements, shipping/returns policy, or legal text were fabricated.
-- The public product-variant query currently returns inventory columns needed by the client to show availability; consider replacing it with a safe public availability view or server endpoint before broad launch to avoid exposing exact stock counts.
+- Public variant availability is exposed through an RLS-protected projection table containing only non-sensitive variant fields and an availability boolean. Private trigger helpers synchronise this projection without exposing exact inventory counts; security advisor returned no findings after this change.
 - The product upload workflow expects the `product-media` bucket created by the migration and an authorised staff role.
 - A source commit and database migration are not proof of a successful production deployment. Build/CI, preview browser journeys, and deployed URL verification still need to be completed.
 
@@ -63,7 +63,7 @@ No administrator is created automatically. After creating the intended owner acc
 - Applied the additive commerce migration successfully.
 - Queried the Supabase schema after migration and confirmed RLS is enabled on all 13 introduced commerce tables; five collections exist.
 - Reviewed Supabase Security Advisors. A pre-existing `public.rls_auto_enable()` security-definer event-trigger helper was flagged for direct EXECUTE grants; a follow-up migration revoked client EXECUTE privileges, and a throwaway public-table test confirmed the event trigger still enables RLS. The Security Advisor then returned no findings.
-- Reviewed Performance Advisors and added indexes for foreign keys. Remaining unused-index notices are expected for a newly created schema with no order/catalogue traffic yet; re-evaluate after real workload.
+- Reviewed Performance Advisors and added indexes for foreign keys. The earlier multiple-permissive-policy and unindexed-foreign-key warnings were addressed. Remaining unused-index notices are expected for a newly created schema with no order/catalogue traffic yet; re-evaluate after real workload.\n- Replaced the initially flagged security-definer availability view with a restricted projection table and private trigger synchronisation; verified the projection is a table with RLS enabled and no exact stock-count columns.
 - Code has not yet been locally built or exercised through a browser in this session. Do not represent type checking, end-to-end tests, or a live deployment as passed until CI/browser/deployment evidence exists.
 
 ## Recommended next steps
