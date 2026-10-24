@@ -258,9 +258,6 @@ drop policy if exists "customer reads own orders" on public.orders;
 create policy "customer reads own orders" on public.orders for select to authenticated using (customer_id = (select auth.uid()));
 drop policy if exists "staff reads orders" on public.orders;
 create policy "staff reads orders" on public.orders for select to authenticated using (exists (select 1 from public.staff_roles sr where sr.user_id = (select auth.uid()) and sr.role in ('owner','admin','manager','fulfilment','support')));
-drop policy if exists "staff updates order operations" on public.orders;
-create policy "staff updates order operations" on public.orders for update to authenticated using (exists (select 1 from public.staff_roles sr where sr.user_id = (select auth.uid()) and sr.role in ('owner','admin','manager','fulfilment'))) with check (exists (select 1 from public.staff_roles sr where sr.user_id = (select auth.uid()) and sr.role in ('owner','admin','manager','fulfilment')));
-
 drop policy if exists "customer reads own order items" on public.order_items;
 create policy "customer reads own order items" on public.order_items for select to authenticated using (exists (select 1 from public.orders o where o.id = order_id and o.customer_id = (select auth.uid())));
 drop policy if exists "staff reads order items" on public.order_items;
@@ -281,9 +278,6 @@ drop policy if exists "staff manage settings" on public.store_settings;
 create policy "staff manage settings" on public.store_settings for all to authenticated using (exists (select 1 from public.staff_roles sr where sr.user_id = (select auth.uid()) and sr.role in ('owner','admin','manager'))) with check (exists (select 1 from public.staff_roles sr where sr.user_id = (select auth.uid()) and sr.role in ('owner','admin','manager')));
 drop policy if exists "staff read audit logs" on public.audit_logs;
 create policy "staff read audit logs" on public.audit_logs for select to authenticated using (exists (select 1 from public.staff_roles sr where sr.user_id = (select auth.uid()) and sr.role in ('owner','admin','manager')));
-drop policy if exists "staff create audit logs" on public.audit_logs;
-create policy "staff create audit logs" on public.audit_logs for insert to authenticated with check (exists (select 1 from public.staff_roles sr where sr.user_id = (select auth.uid()) and sr.role in ('owner','admin','manager')));
-
 -- The storage bucket is public-read for published product imagery; writes remain staff-only.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('product-media', 'product-media', true, 8388608, array['image/jpeg','image/png','image/webp','image/avif'])
@@ -307,5 +301,5 @@ values
   ('howl','HOWL','Instinct, individuality and independent expression.','active',5)
 on conflict (slug) do nothing;
 
--- No direct client insert/update policy exists for orders, order_items, or payment state.
+-- No direct client insert/update policy exists for orders, order_items, payment state, or audit records.
 -- A trusted server-side checkout/payment integration must be added before accepting orders.
