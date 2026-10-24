@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Check,
+  ArrowLeft, ArrowRight, ArrowUpRight, Check,
   CircleUserRound, Menu, Minus, Plus, Search, ShieldCheck, ShoppingBag,
   SlidersHorizontal, X, LogOut, Package, Settings, LayoutDashboard, Shirt,
   Layers3, Truck, CreditCard, LoaderCircle, Image as ImageIcon, Save, Eye
