@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowDownRight, ArrowRight, Bell, Compass, Home, Layers3, Menu,
   MessageCircle, Plus, Search, Settings2, ShieldCheck, Sparkles,
-  Users, X, LogOut, UserRound, Heart, Bookmark, Send, CheckCircle2
+  Users, X, LogOut, UserRound, Bookmark, Send, CheckCircle2
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, supabaseConfigured } from "./lib/supabase";
