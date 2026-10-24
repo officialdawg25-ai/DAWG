@@ -10,7 +10,7 @@ import { supabase, supabaseConfigured } from "./lib/supabase";
 
 type Collection = { id: string; slug: string; name: string; description: string | null; image_url: string | null; status: string; sort_order: number };
 type Product = { id: string; slug: string; name: string; description: string | null; collection_id: string | null; status: string; price_cents: number; compare_at_price_cents: number | null; currency: string; image_url: string | null; sku: string | null; featured: boolean; has_variants: boolean; published_at: string | null; product_variants?: Variant[]; collections?: Collection | null };
-type Variant = { id: string; product_id: string; size: string | null; colour: string | null; sku: string | null; price_cents: number | null; stock_on_hand: number; track_inventory: boolean; status: string };
+type Variant = { id: string; product_id: string; size: string | null; colour: string | null; sku: string | null; price_cents: number | null; stock_on_hand: number; track_inventory: boolean; status: string; available?: boolean };
 type CartLine = { product: Product; variant?: Variant; quantity: number };
 type Route = { page: "home" | "shop" | "collections" | "story" | "account" | "bag" | "admin" | "product"; slug?: string };
 const collectionsFallback = [
@@ -90,9 +90,11 @@ export default function App() {
         if (v.error) console.warn("DAWG public availability query:", v.error.message);
         variantRows = ((v.data || []) as Array<Omit<Variant, "stock_on_hand" | "stock_reserved" | "track_inventory"> & { available: boolean }>).map(variant => ({
           ...variant,
-          stock_on_hand: variant.available ? 99 : 0,
+          // Public catalogue data intentionally exposes availability, not an invented stock count.
+          stock_on_hand: 0,
           stock_reserved: 0,
-          track_inventory: true,
+          track_inventory: false,
+          available: variant.available,
         }));
       }
     }
@@ -157,7 +159,7 @@ export default function App() {
   function openAuth(mode: "signin" | "signup" | "reset" = "signin") { setAuthMode(mode); setAuthOpen(true); }
   function addToCart(product: Product, variant?: Variant) {
     if (!variant) { setNotice("This product has no available inventory variant. Please contact the store team."); return; }
-    if (variant?.track_inventory && variant.stock_on_hand < 1) { setNotice("This variant is currently out of stock."); return; }
+    if (variant?.available === false || (variant?.available === undefined && variant?.track_inventory && variant.stock_on_hand < 1)) { setNotice("This variant is currently out of stock."); return; }
     setCart(old => {
       const key = variant?.id || product.id;
       const existing = old.find(line => (line.variant?.id || line.product.id) === key);
@@ -302,6 +304,6 @@ function VariantPicker({ product, onAdd }: { product: Product; onAdd: (v?: Varia
   const [selected, setSelected] = useState(variants[0]?.id || "");
   const variant = variants.find(v => v.id === selected) || variants[0];
   const hasVariants = product.has_variants;
-  const unavailable = !variant || (variant.track_inventory && variant.stock_on_hand < 1);
-  return <div className="variant-picker">{hasVariants ? (variants.length > 0 ? <><label>Size / colour<select value={variant?.id || selected} onChange={e => setSelected(e.target.value)}>{variants.map(v => <option key={v.id} value={v.id} disabled={v.track_inventory && v.stock_on_hand < 1}>{[v.size, v.colour].filter(Boolean).join(" / ") || "Standard"}{v.track_inventory && v.stock_on_hand < 1 ? " — Sold out" : ""}</option>)}</select></label><p className="variant-stock">{variant?.track_inventory ? (variant.stock_on_hand > 0 ? "Available" : "Sold out") : "Availability confirmed at checkout"}</p></> : <p className="variant-stock">No available variants. Please contact the store team.</p>) : <p className="variant-stock">{variant ? (variant.stock_on_hand > 0 ? "Available" : "Sold out") : "Unavailable"}</p>}<button className="button-dark add-to-bag" disabled={unavailable} onClick={() => onAdd(variant)}>{unavailable ? "Sold out" : "Add to bag"} <ShoppingBag size={16}/></button><p className="detail-note"><Truck size={16}/> Shipping and returns information will be published before launch.</p></div>;
+  const unavailable = !variant || (variant.available !== undefined ? !variant.available : variant.track_inventory && variant.stock_on_hand < 1);
+  return <div className="variant-picker">{hasVariants ? (variants.length > 0 ? <><label>Size / colour<select value={variant?.id || selected} onChange={e => setSelected(e.target.value)}>{variants.map(v => <option key={v.id} value={v.id} disabled={v.track_inventory && v.stock_on_hand < 1}>{[v.size, v.colour].filter(Boolean).join(" / ") || "Standard"}{v.track_inventory && v.stock_on_hand < 1 ? " — Sold out" : ""}</option>)}</select></label><p className="variant-stock">{variant?.available !== undefined ? (variant.available ? "Available" : "Sold out") : variant?.track_inventory ? (variant.stock_on_hand > 0 ? "Available" : "Sold out") : "Availability confirmed at checkout"}</p></> : <p className="variant-stock">No available variants. Please contact the store team.</p>) : <p className="variant-stock">{variant ? (variant.available !== undefined ? (variant.available ? "Available" : "Sold out") : variant.stock_on_hand > 0 ? "Available" : "Sold out") : "Unavailable"}</p>}<button className="button-dark add-to-bag" disabled={unavailable} onClick={() => onAdd(variant)}>{unavailable ? "Sold out" : "Add to bag"} <ShoppingBag size={16}/></button><p className="detail-note"><Truck size={16}/> Shipping and returns information will be published before launch.</p></div>;
 }
