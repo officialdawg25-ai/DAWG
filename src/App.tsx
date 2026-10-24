@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Check,
-  CircleUserRound, Menu, Minus, Plus, Search, ShieldCheck, ShoppingBag,
+  ArrowLeft, ArrowRight, ArrowUpRight, Check,
+  UserRound, Menu, Minus, Plus, Search, ShieldCheck, ShoppingBag,
   SlidersHorizontal, X, LogOut, Package, Settings, LayoutDashboard, Shirt,
-  Layers3, Truck, CreditCard, LoaderCircle
+  Layers3, Truck, CreditCard, LoaderCircle, Image as ImageIcon, Save, Eye
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, supabaseConfigured } from "./lib/supabase";
@@ -13,6 +13,9 @@ type Product = { id: string; slug: string; name: string; description: string | n
 type Variant = { id: string; product_id: string; size: string | null; colour: string | null; sku: string | null; price_cents: number | null; stock_on_hand: number; track_inventory: boolean; status: string; available?: boolean };
 type CartLine = { product: Product; variant?: Variant; quantity: number };
 type Route = { page: "home" | "shop" | "collections" | "story" | "account" | "bag" | "admin" | "product"; slug?: string };
+type HeroConfig = { headlineFirst: string; headlineSecond: string; supportingText: string; primaryLabel: string; primaryDestination: "shop" | "collections"; secondaryLabel: string; secondaryDestination: "story" | "collections"; mediaType: "image" | "video" | "none"; mediaPath: string; mediaUrl?: string; mediaAlt: string; objectPosition: string; posterPath: string; posterUrl?: string };
+type PublishedHeroConfig = Omit<HeroConfig, "mediaPath" | "posterPath"> & { mediaUrl?: string; posterUrl?: string; publishedAt?: string };
+const defaultHeroConfig: HeroConfig = { headlineFirst: "EARNED.", headlineSecond: "NOT GIVEN.", supportingText: "Built for those who move with purpose. Clothing for the work, the setbacks, the discipline — and the person you're becoming.", primaryLabel: "Explore the collection", primaryDestination: "shop", secondaryLabel: "Discover the mindset", secondaryDestination: "story", mediaType: "none", mediaPath: "", mediaAlt: "", objectPosition: "center center", posterPath: "" };
 const collectionsFallback = [
   { name: "KENN", descriptor: "Foundation & status", detail: "Identity. Presence. Belonging." },
   { name: "GRIT", descriptor: "Discipline & resilience", detail: "Consistency over comfort." },
@@ -48,7 +51,7 @@ export default function App() {
   const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [adminTab, setAdminTab] = useState<"overview" | "products" | "collections" | "orders" | "settings">("overview");
+  const [adminTab, setAdminTab] = useState<"overview" | "products" | "collections" | "orders" | "settings" | "hero">("overview");
   const [productEditor, setProductEditor] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productName, setProductName] = useState("");
@@ -67,6 +70,13 @@ export default function App() {
   const [collectionDescription, setCollectionDescription] = useState("");
   const [collectionSlug, setCollectionSlug] = useState("");
   const [collectionStatus, setCollectionStatus] = useState<"draft" | "active">("draft");
+  const [heroDraft, setHeroDraft] = useState<HeroConfig>(defaultHeroConfig);
+  const [heroPublished, setHeroPublished] = useState<PublishedHeroConfig | null>(null);
+  const [heroPreviewUrl, setHeroPreviewUrl] = useState("");
+  const [heroPosterUrl, setHeroPosterUrl] = useState("");
+  const [heroBusy, setHeroBusy] = useState(false);
+  const [heroUploading, setHeroUploading] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   const refreshCatalogue = useCallback(async (forAdmin = false) => {
     if (!supabase) { setLoading(false); return; }
@@ -128,6 +138,41 @@ export default function App() {
   }, [checkAdmin, refreshCatalogue]);
 
   useEffect(() => { localStorage.setItem("dawg-cart", JSON.stringify(cart)); }, [cart]);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduceMotion(mq.matches);
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    supabase.from("storefront_hero").select("config").eq("id", 1).maybeSingle().then(({data,error}) => {
+      if (error) { console.warn("DAWG published hero query:", error.message); return; }
+      if (active && data?.config) setHeroPublished(data.config as PublishedHeroConfig);
+    });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!supabase || !isAdmin) return;
+    let active = true;
+    (async () => {
+      const {data,error} = await supabase.from("storefront_hero_drafts").select("config").eq("id",1).maybeSingle();
+      if (error) { console.warn("DAWG hero draft query:",error.message); return; }
+      if (!active || !data?.config) return;
+      const config = {...defaultHeroConfig,...(data.config as Partial<HeroConfig>)} as HeroConfig;
+      setHeroDraft(config);
+      if (config.mediaPath) {
+        const {data:signed} = await supabase.storage.from("dawg-hero-drafts").createSignedUrl(config.mediaPath,3600);
+        if (active) setHeroPreviewUrl(signed?.signedUrl || "");
+      } else if (config.mediaUrl && active) setHeroPreviewUrl(config.mediaUrl);
+      if (config.posterPath) {
+        const {data:signedPoster} = await supabase.storage.from("dawg-hero-drafts").createSignedUrl(config.posterPath,3600);
+        if (active) setHeroPosterUrl(signedPoster?.signedUrl || "");
+      } else if (config.posterUrl && active) setHeroPosterUrl(config.posterUrl);
+    })();
+    return () => {active=false;};
+  }, [isAdmin]);
   const activeProducts = useMemo(() => products.filter(p => p.status === "active" && Boolean(p.published_at) && new Date(p.published_at as string).getTime() <= Date.now()).filter(p => { const matchesSearch = !search || [p.name, p.description || "", p.sku || "", p.collections?.name || ""].join(" ").toLowerCase().includes(search.toLowerCase()); const matchesCollection = !route.slug || p.collections?.slug === route.slug || p.collection_id === collections.find(c => c.slug === route.slug)?.id; return matchesSearch && matchesCollection; }), [products, search, route.slug, collections]);
   const featured = activeProducts.filter(p => p.featured).slice(0, 4);
   const shownFeatured = featured.length ? featured : activeProducts.slice(0, 4);
@@ -218,6 +263,83 @@ export default function App() {
     } catch (err) { setNotice(err instanceof Error ? err.message : "Product could not be saved. Check admin permissions and database setup."); }
     finally { setBusy(false); }
   }
+
+  async function uploadHeroMedia(file?: File) {
+    if (!file || !supabase || !isAdmin) return;
+    const images = ["image/jpeg","image/png","image/webp","image/avif"];
+    const videos = ["video/mp4","video/webm"];
+    const mediaType = images.includes(file.type) ? "image" : videos.includes(file.type) ? "video" : null;
+    if (!mediaType) { setNotice("Choose a JPEG, PNG, WebP, AVIF, MP4, or WebM file."); return; }
+    if (file.size > 50*1024*1024) { setNotice("Hero media must be 50 MB or smaller."); return; }
+    setHeroUploading(true);
+    try {
+      const ext=file.name.split(".").pop()?.toLowerCase() || (mediaType==="video"?"mp4":"webp");
+      const path=`hero/${crypto.randomUUID()}.${ext}`;
+      const {error}=await supabase.storage.from("dawg-hero-drafts").upload(path,file,{upsert:false,contentType:file.type,cacheControl:"3600"});
+      if(error) throw error;
+      const {data:signed,error:signedError}=await supabase.storage.from("dawg-hero-drafts").createSignedUrl(path,3600);
+      if(signedError) throw signedError;
+      setHeroDraft(v=>({...v,mediaType,mediaPath:path,mediaUrl:"",mediaAlt:mediaType==="image"&&!v.mediaAlt?file.name.replace(/\.[^.]+$/,"").replace(/[-_]/g," "):v.mediaAlt}));
+      setHeroPreviewUrl(signed.signedUrl);
+      setNotice("Hero media uploaded to private draft storage. Save the draft, then publish when ready.");
+    } catch(e) { setNotice(e instanceof Error?e.message:"Hero media upload failed."); }
+    finally {setHeroUploading(false);}
+  }
+  async function uploadHeroPoster(file?: File) {
+    if(!file||!supabase||!isAdmin) return;
+    if(!["image/jpeg","image/png","image/webp","image/avif"].includes(file.type)||file.size>12*1024*1024){setNotice("Choose a JPEG, PNG, WebP, or AVIF poster no larger than 12 MB.");return;}
+    setHeroUploading(true);
+    try {
+      const ext=file.name.split(".").pop()?.toLowerCase()||"webp";
+      const path=`hero-posters/${crypto.randomUUID()}.${ext}`;
+      const {error}=await supabase.storage.from("dawg-hero-drafts").upload(path,file,{upsert:false,contentType:file.type,cacheControl:"3600"});
+      if(error)throw error;
+      const {data:signed,error:signedError}=await supabase.storage.from("dawg-hero-drafts").createSignedUrl(path,3600);
+      if(signedError)throw signedError;
+      setHeroDraft(v=>({...v,posterPath:path,posterUrl:""}));setHeroPosterUrl(signed.signedUrl);setNotice("Video poster uploaded to private draft storage.");
+    }catch(e){setNotice(e instanceof Error?e.message:"Poster upload failed.");}finally{setHeroUploading(false);}
+  }
+  async function saveHeroDraft() {
+    if(!supabase||!isAdmin||!session){setNotice("An authorised administrator session is required.");return;}
+    setHeroBusy(true);
+    try {
+      const {error}=await supabase.from("storefront_hero_drafts").upsert({id:1,config:heroDraft,updated_by:session.user.id},{onConflict:"id"});
+      if(error)throw error;
+      setNotice("Hero draft saved. The public storefront has not changed.");
+    }catch(e){setNotice(e instanceof Error?e.message:"Hero draft could not be saved.");}finally{setHeroBusy(false);}
+  }
+  async function publishHero() {
+    if(!supabase||!isAdmin||!session){setNotice("An authorised administrator session is required.");return;}
+    setHeroBusy(true);
+    let mediaUrl=heroDraft.mediaUrl||heroPublished?.mediaUrl||"";
+    let posterUrl=heroDraft.posterUrl||heroPublished?.posterUrl||"";
+    try {
+      if(heroDraft.mediaPath){
+        const {data:file,error:downloadError}=await supabase.storage.from("dawg-hero-drafts").download(heroDraft.mediaPath);
+        if(downloadError||!file)throw downloadError||new Error("Could not read the private draft media.");
+        const ext=heroDraft.mediaPath.split(".").pop()?.toLowerCase()||(heroDraft.mediaType==="video"?"mp4":"webp");
+        const path=`hero/${crypto.randomUUID()}.${ext}`;
+        const {error}=await supabase.storage.from("dawg-hero-public").upload(path,file,{upsert:false,contentType:file.type||(heroDraft.mediaType==="video"?"video/mp4":"image/webp"),cacheControl:"31536000"});
+        if(error)throw error;
+        mediaUrl=supabase.storage.from("dawg-hero-public").getPublicUrl(path).data.publicUrl;
+      }
+      if(heroDraft.posterPath){
+        const {data:file,error:downloadError}=await supabase.storage.from("dawg-hero-drafts").download(heroDraft.posterPath);
+        if(downloadError||!file)throw downloadError||new Error("Could not read the private video poster.");
+        const ext=heroDraft.posterPath.split(".").pop()?.toLowerCase()||"webp";
+        const path=`hero-posters/${crypto.randomUUID()}.${ext}`;
+        const {error}=await supabase.storage.from("dawg-hero-public").upload(path,file,{upsert:false,contentType:file.type||"image/webp",cacheControl:"31536000"});
+        if(error)throw error;
+        posterUrl=supabase.storage.from("dawg-hero-public").getPublicUrl(path).data.publicUrl;
+      }
+      const published={...heroDraft,mediaPath:"",posterPath:"",mediaUrl,posterUrl,publishedAt:new Date().toISOString()};
+      const {error}=await supabase.from("storefront_hero").upsert({id:1,config:published,published_at:published.publishedAt,updated_by:session.user.id},{onConflict:"id"});
+      if(error)throw error;
+      setHeroPublished(published as PublishedHeroConfig);setHeroPreviewUrl(mediaUrl||"");setHeroPosterUrl(posterUrl||"");
+      setNotice("The new DAWG hero is published.");
+    }catch(e){setNotice(e instanceof Error?e.message:"Hero publishing failed. The previous published hero remains unchanged.");}finally{setHeroBusy(false);}
+  }
+
   async function saveCollection(e: FormEvent) {
     e.preventDefault(); if (!supabase || !isAdmin) return;
     setBusy(true);
@@ -229,28 +351,28 @@ export default function App() {
     finally { setBusy(false); }
   }
 
-  return <div className="store-shell">
-    <div className="announcement"><span>DAWG CLOTHING</span><span className="announcement-message">SUCCESS IS EARNED &amp; NOT GIVEN.</span><button onClick={() => go("story")}>The mindset <ArrowUpRight size={13}/></button></div>
-    <header className="store-header">
+  return <div className={route.page === "home" ? "store-shell home-shell" : "store-shell"}>
+    <header className={`store-header ${route.page === "home" ? "store-header-overlay" : ""}`}>
       <button className="mobile-menu-trigger" aria-label="Toggle navigation" onClick={() => setMobileMenu(v => !v)}>{mobileMenu ? <X/> : <Menu/>}</button>
       <a className="wordmark" href="#/home" aria-label="DAWG Clothing home">DAWG<span>®</span></a>
       <nav className={mobileMenu ? "store-nav nav-open" : "store-nav"} aria-label="Main navigation">
         <button onClick={() => go("shop")}>Shop all</button><button onClick={() => go("collections")}>Collections</button><button onClick={() => go("shop")}>New arrivals</button><button onClick={() => go("story")}>The mindset</button>
       </nav>
       <div className="header-actions">
-        <label className="search-control"><Search size={17}/><input aria-label="Search products" placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); if (e.target.value) go("shop"); }}/>{search && <button aria-label="Clear search" onClick={() => setSearch("")}><X size={14}/></button>}</label>
-        <button className="header-icon account-icon" aria-label="Account" onClick={() => session ? go("account") : openAuth("signin")}><CircleUserRound size={20}/></button>
-        <button className="header-icon bag-icon" aria-label={`Shopping bag, ${cartCount} items`} onClick={() => go("bag")}><ShoppingBag size={20}/>{cartCount > 0 && <span>{cartCount}</span>}</button>
+        <label className="search-control" aria-label="Search the DAWG store"><Search size={19} strokeWidth={1.5}/><input aria-label="Search products" placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); if (e.target.value) go("shop"); }}/>{search && <button aria-label="Clear search" onClick={() => setSearch("")}><X size={14} strokeWidth={1.5}/></button>}</label>
+        <button className="header-icon account-icon" aria-label="Account" title="Account" onClick={() => session ? go("account") : openAuth("signin")}><UserRound size={19} strokeWidth={1.5}/></button>
+        <button className="header-icon bag-icon" aria-label={`Shopping bag, ${cartCount} items`} title="Shopping bag" onClick={() => go("bag")}><ShoppingBag size={19} strokeWidth={1.5}/>{cartCount > 0 && <span>{cartCount}</span>}</button>
       </div>
     </header>
 
     {notice && <div className="store-notice" role="status"><span>{notice}</span><button aria-label="Dismiss notice" onClick={() => setNotice("")}><X size={15}/></button></div>}
 
     <main>
-      {route.page === "home" && <><section className="hero">
-        <div className="hero-topline"><span>EST. ON AMBITION</span><span>DRIVE / AMBITION / WORK / GROWTH</span></div>
-        <div className="hero-main"><p className="hero-index">01 — THE STANDARD</p><h1>SUCCESS IS<br/><em>EARNED.</em><br/>NOT GIVEN<span className="hero-period">.</span></h1><div className="hero-aside"><span className="hero-rule"/><p>Built for those who move with purpose. Clothing for the work, the setbacks, the discipline — and the person you're becoming.</p><button className="button-dark" onClick={() => go("shop")}>Explore the collection <ArrowRight size={16}/></button><button className="hero-secondary" onClick={() => go("story")}>Discover the mindset <ArrowDownRight size={15}/></button></div></div>
-        <div className="hero-bottom"><span>NO SHORTCUTS. NO HANDOUTS.</span><span>THE WORK SPEAKS.</span><span>SCROLL TO EXPLORE ↓</span></div>
+      {route.page === "home" && <><section className={heroPublished?.mediaUrl ? "hero hero-has-media" : "hero"} aria-labelledby="dawg-hero-title">
+        {heroPublished?.mediaUrl && heroPublished.mediaType === "image" && <img className="hero-media" src={heroPublished.mediaUrl} alt={heroPublished.mediaAlt || ""} fetchPriority="high" decoding="async" style={{objectPosition:heroPublished.objectPosition||"center center"}}/>}
+        {heroPublished?.mediaUrl && heroPublished.mediaType === "video" && <video className="hero-media" autoPlay={!reduceMotion} controls={reduceMotion} muted loop playsInline preload={reduceMotion?"none":"metadata"} poster={heroPublished.posterUrl||undefined} aria-label={heroPublished.mediaAlt||"DAWG campaign film"}><source src={heroPublished.mediaUrl}/></video>}
+        <div className="hero-scrim" aria-hidden="true"/>
+        <div className="hero-main"><div className="hero-heading-wrap"><p className="hero-index">THE STANDARD IS EARNED</p><h1 id="dawg-hero-title"><span className="hero-line hero-line-one">{heroPublished?.headlineFirst||defaultHeroConfig.headlineFirst}</span><span className="hero-line hero-line-two">{heroPublished?.headlineSecond||defaultHeroConfig.headlineSecond}</span></h1></div><div className="hero-aside"><span className="hero-rule"/><p>{heroPublished?.supportingText||defaultHeroConfig.supportingText}</p><div className="hero-ctas"><button className="button-dark" onClick={()=>go(heroPublished?.primaryDestination||"shop")}>{heroPublished?.primaryLabel||defaultHeroConfig.primaryLabel} <ArrowRight size={16} strokeWidth={1.5}/></button><button className="hero-secondary" onClick={()=>go(heroPublished?.secondaryDestination||"story")}>{heroPublished?.secondaryLabel||defaultHeroConfig.secondaryLabel} <ArrowUpRight size={15} strokeWidth={1.5}/></button></div></div></div>
       </section>
       <section className="manifesto-strip"><span className="strip-label">THE DAWG CODE</span><p>Discipline is a decision.<br/><span>Excellence is a practice.</span></p><button onClick={() => go("story")}>Read our philosophy <ArrowUpRight size={15}/></button></section>
       <section className="collection-section section-pad"><div className="section-heading"><div><p className="eyebrow">THE COLLECTIONS</p><h2>Five expressions.<br/><em>One standard.</em></h2></div><button className="text-link" onClick={() => go("collections")}>Explore all collections <ArrowRight size={15}/></button></div>
@@ -275,8 +397,9 @@ export default function App() {
 
       {route.page === "account" && <section className="account-page section-pad"><p className="eyebrow">YOUR DAWG ACCOUNT</p><h1>Your space.<br/><em>Your journey.</em></h1>{session ? <div className="account-panel"><div className="account-avatar">{(session.user.user_metadata?.full_name || session.user.email || "D").toString().slice(0,1).toUpperCase()}</div><div><h2>{String(session.user.user_metadata?.full_name || "DAWG member")}</h2><p>{session.user.email}</p><span className="status-pill"><Check size={13}/> Authenticated account</span></div><button className="button-outline-dark" onClick={signOut}><LogOut size={15}/> Sign out</button>{isAdmin && <button className="button-dark" onClick={() => go("admin")}><LayoutDashboard size={15}/> Open store admin</button>}</div> : <div className="account-panel"><p>Sign in or create an account to manage your details and future orders.</p><button className="button-dark" onClick={() => openAuth("signin")}>Sign in <ArrowRight size={15}/></button><button className="button-outline-dark" onClick={() => openAuth("signup")}>Create account</button></div>}</section>}
 
-      {route.page === "admin" && <section className="admin-page section-pad">{isAdmin ? <><div className="admin-title-row"><div><p className="eyebrow">DAWG COMMERCE</p><h1>Store <em>management.</em></h1><p>Manage the catalogue and store operations from one place.</p></div><span className="admin-verified"><ShieldCheck size={15}/> Authorised staff</span></div><div className="admin-layout"><aside className="admin-nav">{([{id:"overview",label:"Overview",icon:LayoutDashboard},{id:"products",label:"Products",icon:Shirt},{id:"collections",label:"Collections",icon:Layers3},{id:"orders",label:"Orders",icon:Package},{id:"settings",label:"Store setup",icon:Settings}] as const).map(item => <button key={item.id} className={adminTab === item.id ? "selected" : ""} onClick={() => setAdminTab(item.id)}><item.icon size={17}/>{item.label}</button>)}</aside><div className="admin-content">
+      {route.page === "admin" && <section className="admin-page section-pad">{isAdmin ? <><div className="admin-title-row"><div><p className="eyebrow">DAWG COMMERCE</p><h1>Store <em>management.</em></h1><p>Manage the catalogue and store operations from one place.</p></div><span className="admin-verified"><ShieldCheck size={15}/> Authorised staff</span></div><div className="admin-layout"><aside className="admin-nav">{([{id:"overview",label:"Overview",icon:LayoutDashboard},{id:"hero",label:"Storefront hero",icon:ImageIcon},{id:"products",label:"Products",icon:Shirt},{id:"collections",label:"Collections",icon:Layers3},{id:"orders",label:"Orders",icon:Package},{id:"settings",label:"Store setup",icon:Settings}] as const).map(item => <button key={item.id} className={adminTab === item.id ? "selected" : ""} onClick={() => setAdminTab(item.id)}><item.icon size={17}/>{item.label}</button>)}</aside><div className="admin-content">
         {adminTab === "overview" && <><div className="admin-welcome"><p className="eyebrow">STORE STATUS</p><h2>Built on the right foundations.</h2><p>Product and collection management are connected to Supabase. Payments and fulfilment remain disabled until their providers are configured and verified.</p></div><div className="admin-metrics"><div><span>Published products</span><strong>{products.length}</strong></div><div><span>Collections</span><strong>{collections.length}</strong></div><div><span>Items in active bag sessions</span><strong>—</strong><small>Not an order metric</small></div></div><div className="admin-callout"><CreditCard size={19}/><div><strong>Payments not configured</strong><p>Do not accept live orders until server-side checkout, provider credentials, webhook verification and reconciliation are implemented.</p></div></div><button className="button-dark" onClick={() => { setAdminTab("products"); startProduct(); }}><Plus size={16}/> Add a product</button></>}
+        {adminTab === "hero" && <section className="hero-admin-panel"><div className="admin-section-title"><div><h2>Storefront hero</h2><p>Manage campaign media and the brand message on the public homepage.</p></div><span className={heroPublished ? "hero-status-published" : "hero-status-draft"}>{heroPublished ? "Published version active" : "Using default hero"}</span></div><div className="hero-admin-grid"><form className="admin-form hero-config-form" onSubmit={e=>{e.preventDefault();void saveHeroDraft();}}><label>First headline line<input required maxLength={40} value={heroDraft.headlineFirst} onChange={e=>setHeroDraft(v=>({...v,headlineFirst:e.target.value}))}/></label><label>Second headline line<input required maxLength={50} value={heroDraft.headlineSecond} onChange={e=>setHeroDraft(v=>({...v,headlineSecond:e.target.value}))}/></label><label>Supporting copy<textarea required rows={4} maxLength={500} value={heroDraft.supportingText} onChange={e=>setHeroDraft(v=>({...v,supportingText:e.target.value}))}/></label><div className="form-two"><label>Primary CTA label<input required maxLength={50} value={heroDraft.primaryLabel} onChange={e=>setHeroDraft(v=>({...v,primaryLabel:e.target.value}))}/></label><label>Primary destination<select value={heroDraft.primaryDestination} onChange={e=>setHeroDraft(v=>({...v,primaryDestination:e.target.value as HeroConfig["primaryDestination"]}))}><option value="shop">Shop / collection</option><option value="collections">All collections</option></select></label></div><div className="form-two"><label>Secondary CTA label<input required maxLength={50} value={heroDraft.secondaryLabel} onChange={e=>setHeroDraft(v=>({...v,secondaryLabel:e.target.value}))}/></label><label>Secondary destination<select value={heroDraft.secondaryDestination} onChange={e=>setHeroDraft(v=>({...v,secondaryDestination:e.target.value as HeroConfig["secondaryDestination"]}))}><option value="story">DAWG mindset</option><option value="collections">All collections</option></select></label></div><label>Media description / alt text<input maxLength={250} value={heroDraft.mediaAlt} onChange={e=>setHeroDraft(v=>({...v,mediaAlt:e.target.value}))} placeholder="Describe the campaign image or film"/></label><label>Image focal position<select value={heroDraft.objectPosition} onChange={e=>setHeroDraft(v=>({...v,objectPosition:e.target.value}))}><option value="center center">Centre</option><option value="center top">Top centre</option><option value="center bottom">Bottom centre</option><option value="left center">Left</option><option value="right center">Right</option></select></label><div className="hero-upload-field"><label htmlFor="hero-media-upload">Campaign image or video</label><p className="field-hint">JPEG, PNG, WebP, AVIF, MP4 or WebM · maximum 50 MB.</p><input id="hero-media-upload" type="file" accept="image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm" onChange={e=>void uploadHeroMedia(e.target.files?.[0])} disabled={!supabase||heroUploading}/>{heroUploading&&<span className="field-hint">Uploading to private draft storage…</span>}</div>{heroDraft.mediaType==="video"&&<div className="hero-upload-field"><label htmlFor="hero-poster-upload">Video poster / fallback image</label><input id="hero-poster-upload" type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={e=>void uploadHeroPoster(e.target.files?.[0])} disabled={!supabase||heroUploading}/><span className="field-hint">Optional · images up to 12 MB.</span></div>}<div className="hero-admin-actions"><button className="button-outline-dark" type="submit" disabled={heroBusy||heroUploading}><Save size={15}/>{heroBusy?"Saving…":"Save draft"}</button><button className="button-dark" type="button" onClick={()=>void publishHero()} disabled={heroBusy||heroUploading}><Eye size={15}/>{heroBusy?"Publishing…":"Publish hero"}</button></div><p className="field-hint">Draft media stays private. Publishing copies selected media to the public campaign bucket and updates the public configuration only after upload succeeds.</p></form><aside className="hero-admin-preview"><p className="eyebrow">LIVE PREVIEW</p><div className="hero-preview-frame">{heroPreviewUrl&&heroDraft.mediaType==="image"?<img src={heroPreviewUrl} alt={heroDraft.mediaAlt||"Campaign preview"} style={{objectPosition:heroDraft.objectPosition}}/>:heroPreviewUrl&&heroDraft.mediaType==="video"?<video src={heroPreviewUrl} muted controls playsInline poster={heroPosterUrl||undefined}/>:<div className="hero-preview-fallback"><span>DAWG</span><strong>{heroDraft.headlineFirst}<br/>{heroDraft.headlineSecond}</strong></div>}<span className="hero-preview-scrim"/><div className="hero-preview-copy"><strong>{heroDraft.headlineFirst}<br/>{heroDraft.headlineSecond}</strong><small>{heroDraft.supportingText}</small></div></div><p className="field-hint">Preview reflects the draft. The public storefront changes only after Publish hero succeeds.</p></aside></div></section>}
         {adminTab === "products" && <><div className="admin-section-title"><div><h2>Products</h2><p>Drafts stay private; only active, published products appear in the shop.</p></div><button className="button-dark" onClick={() => startProduct()}><Plus size={15}/> Add product</button></div>{products.length ? <div className="admin-table">{products.map(p => <div className="admin-product-row" key={p.id}><div className="admin-product-thumb">{p.image_url ? <img src={p.image_url} alt=""/> : <span>D.</span>}</div><div className="admin-product-meta"><strong>{p.name}</strong><small>{p.sku || "No SKU"} · {p.status}</small></div><strong>{money(p.price_cents, p.currency)}</strong><button className="button-outline-dark small-button" onClick={() => startProduct(p)}>Edit</button></div>)}</div> : <div className="admin-empty"><Shirt size={24}/><h3>Your catalogue starts here.</h3><p>No published products are available. Create a draft, add real product information, then publish when ready.</p><button className="button-dark" onClick={() => startProduct()}><Plus size={15}/> Create product</button></div>}</>}
         {adminTab === "collections" && <><div className="admin-section-title"><div><h2>Collections</h2><p>Organise the DAWG identity into discoverable collections.</p></div><button className="button-dark" onClick={() => setCollectionEditor(true)}><Plus size={15}/> Add collection</button></div><div className="admin-table">{collections.length ? collections.map(c => <div className="admin-collection-row" key={c.id}><span className="collection-mini-mark">{c.name.slice(0,1)}</span><div><strong>{c.name}</strong><small>{c.slug} · {c.status}</small></div><span>{c.description || "No description"}</span></div>) : <div className="admin-empty"><Layers3 size={24}/><h3>No collections in the database.</h3><p>The five DAWG collection concepts appear on the storefront; add database collections here to assign products to them.</p><button className="button-dark" onClick={() => setCollectionEditor(true)}><Plus size={15}/> Add collection</button></div>}</div></>}
         {adminTab === "orders" && <div className="admin-empty"><Package size={24}/><h3>Order processing is not enabled.</h3><p>Order management will become operational once a secure server-side checkout and verified payment lifecycle are implemented. No fake orders are displayed.</p></div>}
