@@ -33,7 +33,7 @@ The pre-existing `main` branch is a DAWG community/social experience. The clothi
 
 ## Migration
 
-Migration files: `supabase/migrations/20261024090000_dawg_commerce_foundation.sql`, `20261024100000_dawg_commerce_policy_index_hardening.sql`, `20261024110000_restrict_rls_auto_enable_execute.sql`, `20261024120000_public_variant_availability_view.sql`, and `20261024130000_safe_public_variant_projection.sql`.
+Migration files: `supabase/migrations/20261024090000_dawg_commerce_foundation.sql`, `20261024100000_dawg_commerce_policy_index_hardening.sql`, `20261024110000_restrict_rls_auto_enable_execute.sql`, `20261024120000_public_variant_availability_view.sql`, and `20261024130000_safe_public_variant_projection.sql`, plus `20261024140000_product_variant_mode.sql`.
 
 It was applied to the configured DAWG Supabase project through the connected Supabase tool. It is additive and does not delete or rewrite existing user data. The migration creates the five initial collection records (KENN, GRIT, IVY, ROAM, HOWL), but does not create fake products or orders.
 
