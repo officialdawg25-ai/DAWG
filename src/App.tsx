@@ -110,7 +110,8 @@ export default function App() {
   const shownFeatured = featured.length ? featured : activeProducts.slice(0, 4);
   const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const cartTotal = cart.reduce((sum, line) => sum + (line.variant?.price_cents ?? line.product.price_cents) * line.quantity, 0);
-  const collectionDisplay = collections.filter(c => c.status === "active").length ? collections.filter(c => c.status === "active").map(c => ({ name: c.name, descriptor: c.description || "Explore the collection", detail: c.description || "", slug: c.slug })) : collectionsFallback.map(c => ({ ...c, slug: slugify(c.name) }));\n  const currentProduct = route.page === "product" ? products.find(p => p.slug === route.slug && (p.status === "active" || isAdmin)) : undefined;
+  const collectionDisplay = collections.filter(c => c.status === "active").length ? collections.filter(c => c.status === "active").map(c => ({ name: c.name, descriptor: c.description || "Explore the collection", detail: c.description || "", slug: c.slug })) : collectionsFallback.map(c => ({ ...c, slug: slugify(c.name) }));
+  const currentProduct = route.page === "product" ? products.find(p => p.slug === route.slug && (p.status === "active" || isAdmin)) : undefined;
 
   async function handleAuth(e: FormEvent) {
     e.preventDefault(); if (!supabase) { setNotice("Supabase is not configured for this deployment yet."); return; }
