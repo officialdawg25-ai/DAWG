@@ -274,7 +274,7 @@ export default function App() {
     setHeroUploading(true);
     try {
       const ext=file.name.split(".").pop()?.toLowerCase() || (mediaType==="video"?"mp4":"webp");
-      const path=\`hero/\${crypto.randomUUID()}.\${ext}\`;
+      const path=`hero/${crypto.randomUUID()}.${ext}`;
       const {error}=await supabase.storage.from("dawg-hero-drafts").upload(path,file,{upsert:false,contentType:file.type,cacheControl:"3600"});
       if(error) throw error;
       const {data:signed,error:signedError}=await supabase.storage.from("dawg-hero-drafts").createSignedUrl(path,3600);
@@ -291,7 +291,7 @@ export default function App() {
     setHeroUploading(true);
     try {
       const ext=file.name.split(".").pop()?.toLowerCase()||"webp";
-      const path=\`hero-posters/\${crypto.randomUUID()}.\${ext}\`;
+      const path=`hero-posters/${crypto.randomUUID()}.${ext}`;
       const {error}=await supabase.storage.from("dawg-hero-drafts").upload(path,file,{upsert:false,contentType:file.type,cacheControl:"3600"});
       if(error)throw error;
       const {data:signed,error:signedError}=await supabase.storage.from("dawg-hero-drafts").createSignedUrl(path,3600);
@@ -318,7 +318,7 @@ export default function App() {
         const {data:file,error:downloadError}=await supabase.storage.from("dawg-hero-drafts").download(heroDraft.mediaPath);
         if(downloadError||!file)throw downloadError||new Error("Could not read the private draft media.");
         const ext=heroDraft.mediaPath.split(".").pop()?.toLowerCase()||(heroDraft.mediaType==="video"?"mp4":"webp");
-        const path=\`hero/\${crypto.randomUUID()}.\${ext}\`;
+        const path=`hero/${crypto.randomUUID()}.${ext}`;
         const {error}=await supabase.storage.from("dawg-hero-public").upload(path,file,{upsert:false,contentType:file.type||(heroDraft.mediaType==="video"?"video/mp4":"image/webp"),cacheControl:"31536000"});
         if(error)throw error;
         mediaUrl=supabase.storage.from("dawg-hero-public").getPublicUrl(path).data.publicUrl;
@@ -327,7 +327,7 @@ export default function App() {
         const {data:file,error:downloadError}=await supabase.storage.from("dawg-hero-drafts").download(heroDraft.posterPath);
         if(downloadError||!file)throw downloadError||new Error("Could not read the private video poster.");
         const ext=heroDraft.posterPath.split(".").pop()?.toLowerCase()||"webp";
-        const path=\`hero-posters/\${crypto.randomUUID()}.\${ext}\`;
+        const path=`hero-posters/${crypto.randomUUID()}.${ext}`;
         const {error}=await supabase.storage.from("dawg-hero-public").upload(path,file,{upsert:false,contentType:file.type||"image/webp",cacheControl:"31536000"});
         if(error)throw error;
         posterUrl=supabase.storage.from("dawg-hero-public").getPublicUrl(path).data.publicUrl;
