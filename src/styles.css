@@ -65,3 +65,6 @@
 @media(prefers-reduced-motion:reduce){
  .home-shell .hero-media,.home-shell .hero-line,.home-shell .hero-index,.home-shell .hero-aside{animation:none!important;transform:none!important;opacity:1!important}
 }
+
+.home-shell .hero.hero-has-media:after{display:none}
+.home-shell .hero-scrim{position:absolute;inset:0;z-index:-1;pointer-events:none}
