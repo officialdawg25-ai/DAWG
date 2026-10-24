@@ -63,7 +63,8 @@ No administrator is created automatically. After creating the intended owner acc
 - Applied the additive commerce migration successfully.
 - Queried the Supabase schema after migration and confirmed RLS is enabled on all 13 introduced commerce tables; five collections exist.
 - Reviewed Supabase Security Advisors. A pre-existing `public.rls_auto_enable()` security-definer event-trigger helper was flagged for direct EXECUTE grants; a follow-up migration revoked client EXECUTE privileges, and a throwaway public-table test confirmed the event trigger still enables RLS. The Security Advisor then returned no findings.
-- Reviewed Performance Advisors and added indexes for foreign keys. The earlier multiple-permissive-policy and unindexed-foreign-key warnings were addressed. Remaining unused-index notices are expected for a newly created schema with no order/catalogue traffic yet; re-evaluate after real workload.\n- Replaced the initially flagged security-definer availability view with a restricted projection table and private trigger synchronisation; verified the projection is a table with RLS enabled and no exact stock-count columns.
+- Reviewed Performance Advisors and added indexes for foreign keys. The earlier multiple-permissive-policy and unindexed-foreign-key warnings were addressed. Remaining unused-index notices are expected for a newly created schema with no order/catalogue traffic yet; re-evaluate after real workload.
+- Replaced the initially flagged security-definer availability view with a restricted projection table and private trigger synchronisation; verified the projection is a table with RLS enabled and no exact stock-count columns.
 - Code has not yet been locally built or exercised through a browser in this session. Do not represent type checking, end-to-end tests, or a live deployment as passed until CI/browser/deployment evidence exists.
 
 ## Recommended next steps
