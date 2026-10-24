@@ -1,199 +1,282 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  ArrowDownRight, ArrowRight, Bell, Compass, Home, Layers3, Menu,
-  MessageCircle, Plus, Search, Settings2, ShieldCheck, Sparkles,
-  Users, X, LogOut, UserRound, Bookmark, Send, CheckCircle2
+  ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown,
+  CircleUserRound, Heart, Menu, Minus, Plus, Search, ShieldCheck, ShoppingBag,
+  SlidersHorizontal, X, LogOut, Package, Settings, LayoutDashboard, Shirt,
+  Layers3, Truck, CreditCard, ExternalLink, LoaderCircle
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, supabaseConfigured } from "./lib/supabase";
 
-type Section = "Home" | "Discover" | "Communities" | "Messages" | "Profile";
-const navItems: { label: Section; icon: typeof Home }[] = [
-  { label: "Home", icon: Home },
-  { label: "Discover", icon: Compass },
-  { label: "Communities", icon: Users },
-  { label: "Messages", icon: MessageCircle },
-  { label: "Profile", icon: UserRound },
+type Collection = { id: string; slug: string; name: string; description: string | null; image_url: string | null; status: string; sort_order: number };
+type Product = { id: string; slug: string; name: string; description: string | null; collection_id: string | null; status: string; price_cents: number; compare_at_price_cents: number | null; currency: string; image_url: string | null; sku: string | null; featured: boolean; published_at: string | null; product_variants?: Variant[]; collections?: Collection | null };
+type Variant = { id: string; product_id: string; size: string | null; colour: string | null; sku: string | null; price_cents: number | null; stock_on_hand: number; track_inventory: boolean; status: string };
+type CartLine = { product: Product; variant?: Variant; quantity: number };
+type Route = { page: "home" | "shop" | "collections" | "story" | "account" | "bag" | "admin" | "product"; slug?: string };
+const collectionsFallback = [
+  { name: "KENN", descriptor: "Foundation & status", detail: "Identity. Presence. Belonging." },
+  { name: "GRIT", descriptor: "Discipline & resilience", detail: "Consistency over comfort." },
+  { name: "IVY", descriptor: "Knowledge & performance", detail: "Think clearly. Move deliberately." },
+  { name: "ROAM", descriptor: "Freedom & exploration", detail: "Build life on your terms." },
+  { name: "HOWL", descriptor: "Instinct & rebellion", detail: "Be unmistakably yourself." },
 ];
+const money = (cents: number, currency = "ZAR") => new Intl.NumberFormat("en-ZA", { style: "currency", currency, maximumFractionDigits: 2 }).format(cents / 100);
+function parseRoute(): Route {
+  const raw = window.location.hash.replace(/^#\/?/, "");
+  if (!raw) return { page: "home" };
+  const [page, slug] = raw.split("/");
+  if (["home", "shop", "collections", "story", "account", "bag", "admin", "product"].includes(page)) return { page: page as Route["page"], slug };
+  return { page: "home" };
+}
+function go(page: string, slug?: string) { window.location.hash = slug ? `#/${page}/${slug}` : `#/${page}`; window.scrollTo({ top: 0, behavior: "smooth" }); }
+function slugify(s: string) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
 
-function App() {
-  const [section, setSection] = useState<Section>("Home");
+export default function App() {
+  const [route, setRoute] = useState<Route>(() => parseRoute());
   const [session, setSession] = useState<Session | null>(null);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [cart, setCart] = useState<CartLine[]>(() => { try { return JSON.parse(localStorage.getItem("dawg-cart") || "[]"); } catch { return []; } });
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [notice, setNotice] = useState("");
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup" | "reset">("signin");
   const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [mobileMenu, setMobileMenu] = useState(false);
-  const [query, setQuery] = useState("");
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [saved, setSaved] = useState<string[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminTab, setAdminTab] = useState<"overview" | "products" | "collections" | "orders" | "settings">("overview");
+  const [productEditor, setProductEditor] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [productName, setProductName] = useState("");
+  const [productDescription, setProductDescription] = useState("");
+  const [productPrice, setProductPrice] = useState("");
+  const [productImage, setProductImage] = useState("");
+  const [productCollection, setProductCollection] = useState("");
+  const [productSku, setProductSku] = useState("");
+  const [productSize, setProductSize] = useState("One size");
+  const [productColour, setProductColour] = useState("Black");
+  const [productStock, setProductStock] = useState("0");
+  const [productStatus, setProductStatus] = useState<"draft" | "active">("draft");
+  const [uploading, setUploading] = useState(false);
+  const [collectionEditor, setCollectionEditor] = useState(false);
+  const [collectionName, setCollectionName] = useState("");
+  const [collectionDescription, setCollectionDescription] = useState("");
+  const [collectionSlug, setCollectionSlug] = useState("");
+  const [collectionStatus, setCollectionStatus] = useState<"draft" | "active">("draft");
 
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => listener.subscription.unsubscribe();
+  const refreshCatalogue = useCallback(async () => {
+    if (!supabase) { setLoading(false); return; }
+    setLoading(true);
+    const [c, p] = await Promise.all([
+      supabase.from("collections").select("*").eq("status", "active").order("sort_order"),
+      supabase.from("products").select("*, product_variants(*)").eq("status", "active").not("published_at", "is", null).order("created_at", { ascending: false }),
+    ]);
+    if (c.error) console.warn("DAWG collections query:", c.error.message);
+    if (p.error) console.warn("DAWG products query:", p.error.message);
+    setCollections((c.data || []) as Collection[]);
+    setProducts((p.data || []) as Product[]);
+    setLoading(false);
   }, []);
 
-  async function handleAuth(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setNotice("");
-    if (!supabase) {
-      setNotice("Connect your Supabase project first using the deployment setup instructions.");
-      return;
+  const checkAdmin = useCallback(async (userId?: string) => {
+    if (!supabase || !userId) { setIsAdmin(false); return; }
+    const { data, error } = await supabase.from("staff_roles").select("role").eq("user_id", userId).in("role", ["owner", "admin", "manager"]).maybeSingle();
+    setIsAdmin(!error && Boolean(data));
+  }, []);
+
+  useEffect(() => {
+    const onHash = () => { setRoute(parseRoute()); setMobileMenu(false); };
+    window.addEventListener("hashchange", onHash);
+    if (supabase) {
+      supabase.auth.getSession().then(({ data }) => { setSession(data.session); void checkAdmin(data.session?.user.id); });
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
+        setSession(next);
+        window.setTimeout(() => { void checkAdmin(next?.user.id); }, 0);
+      });
+      void refreshCatalogue();
+      return () => { window.removeEventListener("hashchange", onHash); listener.subscription.unsubscribe(); };
     }
-    setBusy(true);
+    setLoading(false);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [checkAdmin, refreshCatalogue]);
+
+  useEffect(() => { localStorage.setItem("dawg-cart", JSON.stringify(cart)); }, [cart]);
+  const activeProducts = useMemo(() => products.filter(p => !search || [p.name, p.description || "", p.sku || "", p.collections?.name || ""].join(" ").toLowerCase().includes(search.toLowerCase())), [products, search]);
+  const featured = activeProducts.filter(p => p.featured).slice(0, 4);
+  const shownFeatured = featured.length ? featured : activeProducts.slice(0, 4);
+  const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
+  const cartTotal = cart.reduce((sum, line) => sum + (line.variant?.price_cents ?? line.product.price_cents) * line.quantity, 0);
+  const currentProduct = route.page === "product" ? products.find(p => p.slug === route.slug) : undefined;
+
+  async function handleAuth(e: FormEvent) {
+    e.preventDefault(); if (!supabase) { setNotice("Supabase is not configured for this deployment yet."); return; }
+    setBusy(true); setNotice("");
     try {
       if (authMode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName.trim() } },
-        });
+        const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName.trim() }, emailRedirectTo: window.location.origin + "/#/account" } });
         if (error) throw error;
-        setNotice("Account request received. Check your email if confirmation is enabled.");
+        setNotice("Account request received. Check your email if confirmation is enabled."); setAuthOpen(false);
+      } else if (authMode === "reset") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + "/#/account" });
+        if (error) throw error;
+        setNotice("If the email is registered, a password-reset link will be sent."); setAuthOpen(false);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        setAuthOpen(false);
+        const { error } = await supabase.auth.signInWithPassword({ email, password }); if (error) throw error;
+        setAuthOpen(false); setNotice("Signed in successfully.");
       }
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Authentication could not be completed.");
-    } finally {
-      setBusy(false);
-    }
+    } catch (err) { setNotice(err instanceof Error ? err.message : "Authentication could not be completed."); }
+    finally { setBusy(false); }
+  }
+  async function signOut() { if (supabase) await supabase.auth.signOut(); setSession(null); setIsAdmin(false); go("home"); }
+  function openAuth(mode: "signin" | "signup" | "reset" = "signin") { setAuthMode(mode); setAuthOpen(true); }
+  function addToCart(product: Product, variant?: Variant) {
+    if (product.product_variants?.length && !variant) { setNotice("Choose a size and colour on the product page first."); return; }
+    if (variant?.track_inventory && variant.stock_on_hand < 1) { setNotice("This variant is currently out of stock."); return; }
+    setCart(old => {
+      const key = variant?.id || product.id;
+      const existing = old.find(line => (line.variant?.id || line.product.id) === key);
+      if (existing) return old.map(line => (line.variant?.id || line.product.id) === key ? { ...line, quantity: Math.min(line.quantity + 1, variant?.track_inventory ? variant.stock_on_hand : 99) } : line);
+      return [...old, { product, variant, quantity: 1 }];
+    });
+    setNotice(`${product.name} added to your bag.`);
+  }
+  function updateQty(key: string, quantity: number) {
+    if (quantity < 1) { setCart(old => old.filter(line => (line.variant?.id || line.product.id) !== key)); return; }
+    setCart(old => old.map(line => (line.variant?.id || line.product.id) === key ? { ...line, quantity: Math.min(quantity, line.variant?.track_inventory ? line.variant.stock_on_hand : 99) } : line));
+  }
+  function startProduct(p?: Product) {
+    setEditingProduct(p || null); setProductName(p?.name || ""); setProductDescription(p?.description || "");
+    setProductPrice(p ? String(p.price_cents / 100) : ""); setProductImage(p?.image_url || "");
+    setProductCollection(p?.collection_id || ""); setProductSku(p?.sku || "");
+    setProductSize(p?.product_variants?.[0]?.size || "One size"); setProductColour(p?.product_variants?.[0]?.colour || "Black");
+    setProductStock(String(p?.product_variants?.[0]?.stock_on_hand ?? 0)); setProductStatus(p?.status === "active" ? "active" : "draft"); setProductEditor(true);
+  }
+  async function uploadProductImage(file?: File) {
+    if (!file || !supabase) return;
+    if (!file.type.startsWith("image/") || file.size > 8 * 1024 * 1024) { setNotice("Choose an image file no larger than 8 MB."); return; }
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const path = `products/${crypto.randomUUID()}.${ext}`;
+      const { error } = await supabase.storage.from("product-media").upload(path, file, { upsert: false, contentType: file.type });
+      if (error) throw error;
+      const { data } = supabase.storage.from("product-media").getPublicUrl(path);
+      setProductImage(data.publicUrl); setNotice("Product image uploaded.");
+    } catch (err) { setNotice(err instanceof Error ? err.message : "Image upload failed."); }
+    finally { setUploading(false); }
+  }
+  async function saveProduct(e: FormEvent) {
+    e.preventDefault(); if (!supabase || !isAdmin) { setNotice("An authorised administrator session is required."); return; }
+    const price = Number(productPrice);
+    if (!productName.trim() || !Number.isFinite(price) || price < 0 || !Number.isInteger(Math.round(price * 100))) { setNotice("Enter a product name and a valid non-negative price."); return; }
+    setBusy(true);
+    try {
+      const payload = { name: productName.trim(), slug: slugify(productName), description: productDescription.trim() || null, collection_id: productCollection || null, price_cents: Math.round(price * 100), currency: "ZAR", image_url: productImage.trim() || null, sku: productSku.trim() || null, status: productStatus, published_at: productStatus === "active" ? (editingProduct?.published_at || new Date().toISOString()) : null };
+      let productId = editingProduct?.id;
+      if (editingProduct) {
+        const { error } = await supabase.from("products").update(payload).eq("id", editingProduct.id); if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from("products").insert(payload).select("id").single(); if (error) throw error; productId = data.id;
+      }
+      if (productId) {
+        const variant = { product_id: productId, size: productSize.trim() || null, colour: productColour.trim() || null, sku: productSku.trim() || null, stock_on_hand: Math.max(0, Number.parseInt(productStock, 10) || 0), track_inventory: true, status: "active" };
+        const oldVariant = editingProduct?.product_variants?.[0];
+        if (oldVariant) { const { error } = await supabase.from("product_variants").update(variant).eq("id", oldVariant.id); if (error) throw error; }
+        else { const { error } = await supabase.from("product_variants").insert(variant); if (error) throw error; }
+      }
+      setProductEditor(false); setNotice("Product saved."); await refreshCatalogue();
+    } catch (err) { setNotice(err instanceof Error ? err.message : "Product could not be saved. Check admin permissions and database setup."); }
+    finally { setBusy(false); }
+  }
+  async function saveCollection(e: FormEvent) {
+    e.preventDefault(); if (!supabase || !isAdmin) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase.from("collections").insert({ name: collectionName.trim(), slug: slugify(collectionSlug || collectionName), description: collectionDescription.trim() || null, status: collectionStatus, sort_order: collections.length + 1 });
+      if (error) throw error;
+      setCollectionEditor(false); setCollectionName(""); setCollectionSlug(""); setCollectionDescription(""); setNotice("Collection saved."); await refreshCatalogue();
+    } catch (err) { setNotice(err instanceof Error ? err.message : "Collection could not be saved."); }
+    finally { setBusy(false); }
   }
 
-  async function signOut() {
-    if (supabase) await supabase.auth.signOut();
-    setSession(null);
-    setSection("Home");
-  }
-
-  function openAuth(mode: "signin" | "signup") {
-    setAuthMode(mode);
-    setNotice("");
-    setAuthOpen(true);
-  }
-
-  function publishDraft(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draft.trim()) return;
-    setNotice("Your draft is ready. Sign in and connect a posts table before publishing to the community.");
-    setComposerOpen(false);
-  }
-
-  const emailLabel = session?.user.email ?? "";
-  const displayName = String(session?.user.user_metadata?.full_name || emailLabel.split("@")[0] || "there");
-
-  return (
-    <div className="app-shell">
-      <header className="topbar">
-        <a className="brand" href="#" onClick={() => setSection("Home")} aria-label="DAWG home">
-          <span className="brand-mark">D</span><span>DAWG<span className="brand-period">.</span></span>
-        </a>
-        <div className="top-search"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search people, ideas, communities" aria-label="Search"/></div>
-        <div className="top-actions">
-          <button className="icon-button" aria-label="Notifications" onClick={() => setNotice("Notifications will appear here once the notification service is connected.")}><Bell size={19}/></button>
-          {session ? <button className="avatar-button" onClick={() => setSection("Profile")} title="Open profile">{displayName.slice(0,1).toUpperCase()}</button> : <button className="button button-dark top-join" onClick={() => openAuth("signup")}>Join DAWG <ArrowRight size={15}/></button>}
-          <button className="icon-button mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileMenu(!mobileMenu)}>{mobileMenu ? <X size={20}/> : <Menu size={20}/>}</button>
-        </div>
-      </header>
-
-      <div className="workspace">
-        <aside className={`sidebar ${mobileMenu ? "sidebar-open" : ""}`}>
-          <div className="sidebar-label">YOUR SPACE</div>
-          <nav className="side-nav" aria-label="Main navigation">
-            {navItems.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${section === label ? "active" : ""}`} onClick={() => { setSection(label); setMobileMenu(false); }}>
-              <Icon size={18} strokeWidth={1.8}/><span>{label}</span>{label === "Messages" && <span className="nav-arrow"><ArrowDownRight size={14}/></span>}
-            </button>)}
-          </nav>
-          <div className="sidebar-rule"/>
-          <div className="sidebar-label">YOUR WORLD</div>
-          <button className="nav-item" onClick={() => setSection("Communities")}><Layers3 size={18}/><span>My spaces</span></button>
-          <button className="nav-item" onClick={() => setNotice("Saved items are stored locally in this preview. Account-synced bookmarks will be added with the database schema.")}><Bookmark size={18}/><span>Saved</span></button>
-          <div className="sidebar-bottom">
-            <div className="sidebar-prompt"><span className="prompt-icon"><Sparkles size={16}/></span><strong>Good things start together.</strong><p>Find your people. Make something happen.</p><button onClick={() => openAuth("signup")}>Get started <ArrowRight size={14}/></button></div>
-            {session && <button className="nav-item signout" onClick={signOut}><LogOut size={17}/><span>Sign out</span></button>}
-            <div className="side-footer">DAWG © 2026 <span>Built for belonging.</span></div>
-          </div>
-        </aside>
-
-        <main className="main-content">
-          {notice && <div className="notice" role="status"><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice("")}><X size={15}/></button></div>}
-          {!session && <section className="welcome-banner">
-            <div className="welcome-copy"><div className="eyebrow"><span className="eyebrow-dot"/> A NEW KIND OF TOGETHER</div><h1>Life moves better<br/><span>with your people.</span></h1><p>Find your people, discover what matters, and turn good intentions into something real.</p><div className="welcome-buttons"><button className="button button-dark" onClick={() => openAuth("signup")}>Find your people <ArrowRight size={16}/></button><button className="text-button" onClick={() => setSection("Discover")}>Explore DAWG <ArrowDownRight size={16}/></button></div></div>
-            <div className="welcome-art" aria-hidden="true"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-core"><span>D</span></div><div className="art-node node-a">✳</div><div className="art-node node-b"><Users size={19}/></div><div className="art-node node-c"><Sparkles size={18}/></div><div className="art-caption">BETTER, TOGETHER.</div></div>
-          </section>}
-
-          <section className="content-heading">
-            <div><div className="eyebrow muted-eyebrow">{section === "Home" ? "YOUR DAILY SPACE" : "EXPLORE DAWG"}</div><h2>{section === "Home" ? (session ? `Welcome back, ${displayName}.` : "A little closer, every day.") : section}</h2><p>{sectionDescription(section, Boolean(session))}</p></div>
-            {section === "Home" && <button className="button button-outline" onClick={() => setComposerOpen(true)}><Plus size={17}/> Create a post</button>}
-          </section>
-
-          {section === "Home" && <HomeContent openAuth={openAuth} setSection={setSection} saved={saved} setSaved={setSaved} />}
-          {section === "Discover" && <DiscoverContent query={query} setSection={setSection} openAuth={openAuth}/>}
-          {section === "Communities" && <CommunitiesContent openAuth={openAuth}/>}
-          {section === "Messages" && <MessagesContent openAuth={openAuth}/>}
-          {section === "Profile" && <ProfileContent session={session} displayName={displayName} email={emailLabel} openAuth={openAuth}/>}
-          <footer className="mobile-footer"><span>DAWG © 2026</span><span>Life moves better together.</span></footer>
-        </main>
-
-        <aside className="right-rail">
-          <div className="rail-topline"><span>THE DAWG NOTE</span><Sparkles size={15}/></div>
-          <div className="note-card"><div className="note-number">01 / A REMINDER</div><h3>You don't have to do it all alone.</h3><p>The best things rarely happen in isolation. Start with one conversation.</p><button onClick={() => openAuth("signup")}>Make a connection <ArrowRight size={14}/></button><div className="note-decoration">✳</div></div>
-          <div className="rail-section"><div className="rail-heading">START SOMEWHERE <ArrowDownRight size={14}/></div><button className="quick-link" onClick={() => setSection("Discover")}><span className="quick-icon lavender"><Compass size={17}/></span><span><strong>Explore ideas</strong><small>See what sparks your interest</small></span><ArrowRight size={15}/></button><button className="quick-link" onClick={() => setSection("Communities")}><span className="quick-icon peach"><Users size={17}/></span><span><strong>Find your circle</strong><small>Make room for shared interests</small></span><ArrowRight size={15}/></button><button className="quick-link" onClick={() => setSection("Messages")}><span className="quick-icon mint"><MessageCircle size={17}/></span><span><strong>Start a conversation</strong><small>Every connection starts somewhere</small></span><ArrowRight size={15}/></button></div>
-          <div className="rail-status"><span className={supabaseConfigured ? "status-dot live" : "status-dot"}/><span>{supabaseConfigured ? "Supabase configured" : "Setup in progress"}</span><button onClick={() => setNotice(supabaseConfigured ? "Supabase environment variables are present. Database-backed features still require schema and RLS setup." : "Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Cloudflare Workers variables and your local .env.local file.")}><Settings2 size={14}/></button></div>
-        </aside>
+  return <div className="store-shell">
+    <div className="announcement"><span>DAWG CLOTHING</span><span className="announcement-message">SUCCESS IS EARNED &amp; NOT GIVEN.</span><button onClick={() => go("story")}>The mindset <ArrowUpRight size={13}/></button></div>
+    <header className="store-header">
+      <button className="mobile-menu-trigger" aria-label="Toggle navigation" onClick={() => setMobileMenu(v => !v)}>{mobileMenu ? <X/> : <Menu/>}</button>
+      <a className="wordmark" href="#/home" aria-label="DAWG Clothing home">DAWG<span>®</span></a>
+      <nav className={mobileMenu ? "store-nav nav-open" : "store-nav"} aria-label="Main navigation">
+        <button onClick={() => go("shop")}>Shop all</button><button onClick={() => go("collections")}>Collections</button><button onClick={() => go("shop")}>New arrivals</button><button onClick={() => go("story")}>The mindset</button>
+      </nav>
+      <div className="header-actions">
+        <label className="search-control"><Search size={17}/><input aria-label="Search products" placeholder="Search" value={search} onChange={e => { setSearch(e.target.value); if (e.target.value) go("shop"); }}/>{search && <button aria-label="Clear search" onClick={() => setSearch("")}><X size={14}/></button>}</label>
+        <button className="header-icon account-icon" aria-label="Account" onClick={() => session ? go("account") : openAuth("signin")}><CircleUserRound size={20}/></button>
+        <button className="header-icon bag-icon" aria-label={`Shopping bag, ${cartCount} items`} onClick={() => go("bag")}><ShoppingBag size={20}/>{cartCount > 0 && <span>{cartCount}</span>}</button>
       </div>
+    </header>
 
-      {composerOpen && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setComposerOpen(false); }}><section className="auth-modal composer-modal" role="dialog" aria-modal="true" aria-labelledby="composer-title"><button className="modal-close" onClick={() => setComposerOpen(false)} aria-label="Close"><X size={19}/></button><div className="modal-symbol"><Plus size={22}/></div><div className="eyebrow muted-eyebrow">SHARE A THOUGHT</div><h2 id="composer-title">Start a conversation.</h2><form onSubmit={publishDraft}><textarea value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="What's on your mind?" rows={5} required maxLength={1000}/><div className="form-foot"><span>{draft.length}/1000</span><button className="button button-dark" type="submit">Continue <Send size={15}/></button></div></form><p className="modal-footnote">Publishing will be enabled after the secure posts database is connected.</p></section></div>}
+    {notice && <div className="store-notice" role="status"><span>{notice}</span><button aria-label="Dismiss notice" onClick={() => setNotice("")}><X size={15}/></button></div>}
 
-      {authOpen && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setAuthOpen(false); }}><section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className="modal-close" onClick={() => setAuthOpen(false)} aria-label="Close"><X size={19}/></button><div className="modal-brand"><span className="brand-mark">D</span><span>DAWG<span className="brand-period">.</span></span></div><div className="eyebrow muted-eyebrow">{authMode === "signup" ? "YOUR NEXT CHAPTER" : "WELCOME BACK"}</div><h2 id="auth-title">{authMode === "signup" ? "Come as you are." : "Good to see you."}</h2><p className="modal-description">{authMode === "signup" ? "Create your account. Your people are out there." : "Pick up where you left off."}</p><form onSubmit={handleAuth} className="auth-form">{authMode === "signup" && <label>Your name<input autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="How should we call you?" required/></label>}<label>Email address<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required/></label><label>Password<input type="password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" required/></label>{notice && <p className="form-message" role="status">{notice}</p>}<button className="button button-dark auth-submit" type="submit" disabled={busy}>{busy ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"} <ArrowRight size={16}/></button></form>{!supabaseConfigured && <div className="setup-hint"><ShieldCheck size={16}/><span>Account access activates when your Supabase URL and publishable key are configured.</span></div>}<p className="auth-switch">{authMode === "signup" ? "Already part of DAWG?" : "New around here?"} <button onClick={() => { setAuthMode(authMode === "signup" ? "signin" : "signup"); setNotice(""); }}>{authMode === "signup" ? "Sign in" : "Create an account"}</button></p><p className="modal-footnote">By continuing, you agree to use DAWG respectfully. Terms and privacy details will be published before public launch.</p></section></div>}
-    </div>
-  );
+    <main>
+      {route.page === "home" && <><section className="hero">
+        <div className="hero-topline"><span>EST. ON AMBITION</span><span>DRIVE / AMBITION / WORK / GROWTH</span></div>
+        <div className="hero-main"><p className="hero-index">01 — THE STANDARD</p><h1>SUCCESS IS<br/><em>EARNED.</em><br/>NOT GIVEN<span className="hero-period">.</span></h1><div className="hero-aside"><span className="hero-rule"/><p>Built for those who move with purpose. Clothing for the work, the setbacks, the discipline — and the person you're becoming.</p><button className="button-dark" onClick={() => go("shop")}>Explore the collection <ArrowRight size={16}/></button><button className="hero-secondary" onClick={() => go("story")}>Discover the mindset <ArrowDownRight size={15}/></button></div></div>
+        <div className="hero-bottom"><span>NO SHORTCUTS. NO HANDOUTS.</span><span>THE WORK SPEAKS.</span><span>SCROLL TO EXPLORE ↓</span></div>
+      </section>
+      <section className="manifesto-strip"><span className="strip-label">THE DAWG CODE</span><p>Discipline is a decision.<br/><span>Excellence is a practice.</span></p><button onClick={() => go("story")}>Read our philosophy <ArrowUpRight size={15}/></button></section>
+      <section className="collection-section section-pad"><div className="section-heading"><div><p className="eyebrow">THE COLLECTIONS</p><h2>Five expressions.<br/><em>One standard.</em></h2></div><button className="text-link" onClick={() => go("collections")}>Explore all collections <ArrowRight size={15}/></button></div>
+        <div className="collection-grid">{collectionsFallback.map((c, i) => { const db = collections.find(x => x.name.toLowerCase() === c.name.toLowerCase()); return <button key={c.name} className={`collection-tile tile-${i + 1}`} onClick={() => go("shop", db?.slug)}><span className="tile-number">0{i + 1} / COLLECTION</span><span className="tile-glyph">{c.name.slice(0,1)}</span><span className="tile-bottom"><span><strong>{c.name}</strong><small>{c.descriptor}</small></span><ArrowUpRight size={18}/></span></button>; })}</div>
+      </section>
+      <section className="product-section section-pad"><div className="section-heading"><div><p className="eyebrow">THE CURRENT LINEUP</p><h2>Made to move<br/><em>with intention.</em></h2></div><button className="text-link" onClick={() => go("shop")}>Shop all <ArrowRight size={15}/></button></div>
+        {loading ? <div className="empty-state"><LoaderCircle className="spin" size={22}/><p>Loading the collection…</p></div> : shownFeatured.length ? <ProductGrid products={shownFeatured} onOpen={p => go("product", p.slug)} onAdd={addToCart}/> : <div className="empty-catalogue"><span className="empty-mark">D.</span><div><p className="eyebrow">THE NEXT DROP IS BEING BUILT</p><h3>Good things take work.</h3><p>There are no published products just yet. The DAWG catalogue will appear here when products are ready.</p></div><button className="button-outline-dark" onClick={() => go("collections")}>Explore the collections <ArrowRight size={15}/></button></div>}
+      </section>
+      <section className="closing-banner"><div><p className="eyebrow">FOR THE WORK IN PROGRESS</p><h2>Become who<br/><em>you said you'd be.</em></h2></div><button className="button-light" onClick={() => go("story")}>The DAWG mindset <ArrowUpRight size={16}/></button><span className="closing-stamp">D / A / W / G</span></section></>}
+
+      {route.page === "shop" && <section className="page-section section-pad"><div className="page-intro"><p className="eyebrow">THE DAWG STORE</p><h1>Shop <em>the standard.</em></h1><p>Considered essentials for people who do the work.</p></div><div className="shop-toolbar"><span>{activeProducts.length} {activeProducts.length === 1 ? "product" : "products"}{search ? ` matching “${search}”` : ""}</span><button className="filter-button" onClick={() => setSearch("")}><SlidersHorizontal size={15}/> {search ? "Clear search" : "All products"}</button></div>
+        {loading ? <div className="empty-state"><LoaderCircle className="spin" size={22}/><p>Loading products…</p></div> : activeProducts.length ? <ProductGrid products={activeProducts} onOpen={p => go("product", p.slug)} onAdd={addToCart}/> : <div className="empty-catalogue"><span className="empty-mark">D.</span><div><p className="eyebrow">{search ? "NO MATCHES FOUND" : "CATALOGUE IN PREPARATION"}</p><h3>{search ? "Try another search." : "The first drop is on its way."}</h3><p>{search ? "Try a different product name or clear your search." : "Products will appear here once the DAWG team has added and published them."}</p></div><button className="button-outline-dark" onClick={() => { setSearch(""); go("collections"); }}>Explore collections <ArrowRight size={15}/></button></div>}
+      </section>}
+
+      {route.page === "collections" && <section className="page-section section-pad"><div className="page-intro"><p className="eyebrow">THE DAWG UNIVERSE</p><h1>Find your <em>expression.</em></h1><p>Five collection identities. One shared standard: earned, never given.</p></div><div className="collection-grid collections-page-grid">{collectionsFallback.map((c, i) => { const db = collections.find(x => x.name.toLowerCase() === c.name.toLowerCase()); return <button key={c.name} className={`collection-tile tile-${i + 1}`} onClick={() => { setSearch(""); go("shop", db?.slug); }}><span className="tile-number">0{i + 1} / COLLECTION</span><span className="tile-glyph">{c.name.slice(0,1)}</span><span className="tile-bottom"><span><strong>{c.name}</strong><small>{c.descriptor}</small><small className="tile-detail">{c.detail}</small></span><ArrowUpRight size={18}/></span></button>; })}</div></section>}
+
+      {route.page === "story" && <section className="story-page section-pad"><p className="eyebrow">THE DAWG MINDSET</p><h1>Success is earned.<br/><em>Not given.</em></h1><div className="story-copy"><p className="story-lead">DAWG is for the ones who understand that the person you become is built in the moments nobody sees.</p><p>It is the decision to show up again. To learn when it is uncomfortable. To build with intention. To keep your word when it would be easier not to.</p><p>We believe ambition means little without action, and talent means little without discipline. The work is the point. Growth is the reward.</p></div><div className="values-grid">{[["D","DRIVE","Move with purpose."],["A","AMBITION","Set a higher standard."],["W","WORK","Earn every step."],["G","GROWTH","Keep becoming."]].map(([letter, title, body]) => <div className="value-item" key={letter}><span>{letter}</span><strong>{title}</strong><p>{body}</p></div>)}</div><button className="button-dark" onClick={() => go("shop")}>Explore DAWG Clothing <ArrowRight size={16}/></button></section>}
+
+      {route.page === "product" && <section className="product-detail section-pad">{currentProduct ? <><button className="back-link" onClick={() => go("shop")}><ArrowLeft size={15}/> Back to shop</button><div className="detail-layout"><div className="detail-image">{currentProduct.image_url ? <img src={currentProduct.image_url} alt={currentProduct.name}/> : <div className="product-placeholder"><span>DAWG</span><small>PRODUCT IMAGE PENDING</small></div>}</div><div className="detail-copy"><p className="eyebrow">{currentProduct.collections?.name || "DAWG CLOTHING"}</p><h1>{currentProduct.name}</h1><p className="detail-price">{money(currentProduct.price_cents, currentProduct.currency)}</p>{currentProduct.description && <p className="detail-description">{currentProduct.description}</p>}<VariantPicker product={currentProduct} onAdd={variant => addToCart(currentProduct, variant)}/><p className="detail-note"><ShieldCheck size={16}/> Secure checkout will be available once the store's payment provider is configured.</p></div></div></> : <div className="empty-state"><p>This product is unavailable or has not been published.</p><button className="button-dark" onClick={() => go("shop")}>Return to shop</button></div>}</section>}
+
+      {route.page === "bag" && <section className="page-section section-pad"><div className="page-intro"><p className="eyebrow">YOUR SELECTION</p><h1>Your <em>bag.</em></h1><p>Every piece starts with a decision.</p></div>{cart.length ? <div className="cart-layout"><div className="cart-lines">{cart.map(line => { const key = line.variant?.id || line.product.id; const price = line.variant?.price_cents ?? line.product.price_cents; return <div className="cart-line" key={key}><div className="cart-thumb">{line.product.image_url ? <img src={line.product.image_url} alt=""/> : <span>D.</span>}</div><div className="cart-line-info"><button className="cart-product-name" onClick={() => go("product", line.product.slug)}>{line.product.name}</button><span>{[line.variant?.size, line.variant?.colour].filter(Boolean).join(" / ") || "Standard"}</span><strong>{money(price, line.product.currency)}</strong><div className="qty-control"><button aria-label="Decrease quantity" onClick={() => updateQty(key, line.quantity - 1)}><Minus size={13}/></button><span>{line.quantity}</span><button aria-label="Increase quantity" onClick={() => updateQty(key, line.quantity + 1)} disabled={Boolean(line.variant?.track_inventory && line.quantity >= line.variant.stock_on_hand)}><Plus size={13}/></button></div></div><button className="remove-line" onClick={() => updateQty(key, 0)} aria-label="Remove item"><X size={16}/></button></div>; })}</div><aside className="cart-summary"><p className="eyebrow">ORDER SUMMARY</p><div><span>Subtotal</span><strong>{money(cartTotal)}</strong></div><div><span>Shipping</span><span>Calculated at checkout</span></div><div className="summary-total"><span>Total</span><strong>{money(cartTotal)}</strong></div><button className="button-dark checkout-button" onClick={() => { setNotice("Checkout is not yet enabled: payment-provider credentials and server-side payment verification must be configured before collecting money."); }}>Continue to checkout <ArrowRight size={16}/></button><p className="checkout-hint">No payment will be collected until a verified provider is connected.</p><button className="text-link" onClick={() => go("shop")}>Continue shopping</button></aside></div> : <div className="empty-catalogue"><span className="empty-mark"><ShoppingBag size={26}/></span><div><p className="eyebrow">NOTHING IN THE BAG</p><h3>Make your first move.</h3><p>Your selected pieces will live here.</p></div><button className="button-outline-dark" onClick={() => go("shop")}>Explore the store <ArrowRight size={15}/></button></div>}</section>}
+
+      {route.page === "account" && <section className="account-page section-pad"><p className="eyebrow">YOUR DAWG ACCOUNT</p><h1>Your space.<br/><em>Your journey.</em></h1>{session ? <div className="account-panel"><div className="account-avatar">{(session.user.user_metadata?.full_name || session.user.email || "D").toString().slice(0,1).toUpperCase()}</div><div><h2>{String(session.user.user_metadata?.full_name || "DAWG member")}</h2><p>{session.user.email}</p><span className="status-pill"><Check size={13}/> Authenticated account</span></div><button className="button-outline-dark" onClick={signOut}><LogOut size={15}/> Sign out</button>{isAdmin && <button className="button-dark" onClick={() => go("admin")}><LayoutDashboard size={15}/> Open store admin</button>}</div> : <div className="account-panel"><p>Sign in or create an account to manage your details and future orders.</p><button className="button-dark" onClick={() => openAuth("signin")}>Sign in <ArrowRight size={15}/></button><button className="button-outline-dark" onClick={() => openAuth("signup")}>Create account</button></div>}</section>}
+
+      {route.page === "admin" && <section className="admin-page section-pad">{isAdmin ? <><div className="admin-title-row"><div><p className="eyebrow">DAWG COMMERCE</p><h1>Store <em>management.</em></h1><p>Manage the catalogue and store operations from one place.</p></div><span className="admin-verified"><ShieldCheck size={15}/> Authorised staff</span></div><div className="admin-layout"><aside className="admin-nav">{([{id:"overview",label:"Overview",icon:LayoutDashboard},{id:"products",label:"Products",icon:Shirt},{id:"collections",label:"Collections",icon:Layers3},{id:"orders",label:"Orders",icon:Package},{id:"settings",label:"Store setup",icon:Settings}] as const).map(item => <button key={item.id} className={adminTab === item.id ? "selected" : ""} onClick={() => setAdminTab(item.id)}><item.icon size={17}/>{item.label}</button>)}</aside><div className="admin-content">
+        {adminTab === "overview" && <><div className="admin-welcome"><p className="eyebrow">STORE STATUS</p><h2>Built on the right foundations.</h2><p>Product and collection management are connected to Supabase. Payments and fulfilment remain disabled until their providers are configured and verified.</p></div><div className="admin-metrics"><div><span>Published products</span><strong>{products.length}</strong></div><div><span>Collections</span><strong>{collections.length}</strong></div><div><span>Items in active bag sessions</span><strong>—</strong><small>Not an order metric</small></div></div><div className="admin-callout"><CreditCard size={19}/><div><strong>Payments not configured</strong><p>Do not accept live orders until server-side checkout, provider credentials, webhook verification and reconciliation are implemented.</p></div></div><button className="button-dark" onClick={() => { setAdminTab("products"); startProduct(); }}><Plus size={16}/> Add a product</button></>}
+        {adminTab === "products" && <><div className="admin-section-title"><div><h2>Products</h2><p>Drafts stay private; only active, published products appear in the shop.</p></div><button className="button-dark" onClick={() => startProduct()}><Plus size={15}/> Add product</button></div>{products.length ? <div className="admin-table">{products.map(p => <div className="admin-product-row" key={p.id}><div className="admin-product-thumb">{p.image_url ? <img src={p.image_url} alt=""/> : <span>D.</span>}</div><div className="admin-product-meta"><strong>{p.name}</strong><small>{p.sku || "No SKU"} · {p.status}</small></div><strong>{money(p.price_cents, p.currency)}</strong><button className="button-outline-dark small-button" onClick={() => startProduct(p)}>Edit</button></div>)}</div> : <div className="admin-empty"><Shirt size={24}/><h3>Your catalogue starts here.</h3><p>No published products are available. Create a draft, add real product information, then publish when ready.</p><button className="button-dark" onClick={() => startProduct()}><Plus size={15}/> Create product</button></div>}</>}
+        {adminTab === "collections" && <><div className="admin-section-title"><div><h2>Collections</h2><p>Organise the DAWG identity into discoverable collections.</p></div><button className="button-dark" onClick={() => setCollectionEditor(true)}><Plus size={15}/> Add collection</button></div><div className="admin-table">{collections.length ? collections.map(c => <div className="admin-collection-row" key={c.id}><span className="collection-mini-mark">{c.name.slice(0,1)}</span><div><strong>{c.name}</strong><small>{c.slug} · {c.status}</small></div><span>{c.description || "No description"}</span></div>) : <div className="admin-empty"><Layers3 size={24}/><h3>No collections in the database.</h3><p>The five DAWG collection concepts appear on the storefront; add database collections here to assign products to them.</p><button className="button-dark" onClick={() => setCollectionEditor(true)}><Plus size={15}/> Add collection</button></div>}</div></>}
+        {adminTab === "orders" && <div className="admin-empty"><Package size={24}/><h3>Order processing is not enabled.</h3><p>Order management will become operational once a secure server-side checkout and verified payment lifecycle are implemented. No fake orders are displayed.</p></div>}
+        {adminTab === "settings" && <><div className="admin-section-title"><div><h2>Store setup</h2><p>Integration status based on the current application configuration.</p></div></div><div className="settings-list"><div><span><Layers3 size={18}/></span><div><strong>Supabase catalogue</strong><small>Client configured: {supabaseConfigured ? "Yes" : "No"}</small></div><b className={supabaseConfigured ? "setting-good" : "setting-warn"}>{supabaseConfigured ? "Configured" : "Needs setup"}</b></div><div><span><CreditCard size={18}/></span><div><strong>Payment provider</strong><small>Sandbox credentials and verified server callback not detected.</small></div><b className="setting-warn">Not configured</b></div><div><span><Truck size={18}/></span><div><strong>Shipping and fulfilment</strong><small>Rates, zones, and production provider need setup.</small></div><b className="setting-warn">Not configured</b></div><div><span><ShieldCheck size={18}/></span><div><strong>Staff permissions</strong><small>Access is checked against the staff_roles table.</small></div><b className={isAdmin ? "setting-good" : "setting-warn"}>{isAdmin ? "Verified for session" : "No admin role"}</b></div></div></>}
+      </div></div></> : <div className="admin-denied"><ShieldCheck size={30}/><p className="eyebrow">RESTRICTED AREA</p><h1>Authorised people<br/><em>only.</em></h1><p>This portal requires a signed-in account with an explicitly assigned DAWG staff role. A customer account alone does not grant access.</p><button className="button-dark" onClick={() => session ? go("account") : openAuth("signin")}>{session ? "Return to account" : "Sign in"} <ArrowRight size={15}/></button><p className="admin-setup-note">Initial owner access must be granted securely in Supabase after the owner account is created.</p></div>}</section>}
+    </main>
+
+    <footer className="store-footer"><div className="footer-main"><div className="footer-brand"><a className="wordmark" href="#/home">DAWG<span>®</span></a><p>Success is earned &amp; not given.</p><small>Drive. Ambition. Work. Growth.</small></div><div className="footer-links"><div><strong>THE STORE</strong><button onClick={() => go("shop")}>Shop all</button><button onClick={() => go("collections")}>Collections</button><button onClick={() => go("bag")}>Your bag</button></div><div><strong>THE BRAND</strong><button onClick={() => go("story")}>The mindset</button><button onClick={() => openAuth("signup")}>Create account</button><button onClick={() => go("admin")}>Store administration</button></div><div><strong>HELP &amp; INFORMATION</strong><span>Shipping information to be configured</span><span>Returns policy to be configured</span><span>Contact details to be configured</span></div></div></div><div className="footer-bottom"><span>© {new Date().getFullYear()} DAWG CLOTHING</span><span>SUCCESS IS EARNED &amp; NOT GIVEN.</span><button onClick={() => go("admin")}>STAFF ACCESS <ArrowUpRight size={12}/></button></div></footer>
+
+    {authOpen && <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setAuthOpen(false); }}><section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className="modal-close" onClick={() => setAuthOpen(false)} aria-label="Close"><X size={19}/></button><span className="modal-monogram">D.</span><p className="eyebrow">WELCOME TO DAWG</p><h2 id="auth-title">{authMode === "signup" ? "Create your account." : authMode === "reset" ? "Reset your password." : "Welcome back."}</h2><p className="modal-description">{authMode === "signup" ? "Your next chapter starts with a decision." : authMode === "reset" ? "We'll send a reset link if your account exists." : "Sign in to continue your journey."}</p><form onSubmit={handleAuth}>{authMode === "signup" && <label>Full name<input required value={fullName} onChange={e => setFullName(e.target.value)} autoComplete="name" maxLength={100}/></label>}<label>Email address<input required type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email"/></label>{authMode !== "reset" && <label>Password<input required type="password" minLength={8} value={password} onChange={e => setPassword(e.target.value)} autoComplete={authMode === "signup" ? "new-password" : "current-password"}/></label>}<button className="button-dark auth-submit" disabled={busy}>{busy ? "Please wait…" : authMode === "signup" ? "Create account" : authMode === "reset" ? "Send reset link" : "Sign in"} <ArrowRight size={15}/></button></form><div className="auth-switch">{authMode === "signin" ? <><button onClick={() => setAuthMode("signup")}>Create an account</button><button onClick={() => setAuthMode("reset")}>Forgot password?</button></> : <button onClick={() => setAuthMode("signin")}>Back to sign in</button>}</div>{!supabaseConfigured && <p className="setup-warning">Supabase credentials are not configured in this deployment. Account actions are unavailable.</p>}</section></div>}
+
+    {productEditor && <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setProductEditor(false); }}><section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="product-editor-title"><div className="admin-modal-heading"><div><p className="eyebrow">CATALOGUE MANAGEMENT</p><h2 id="product-editor-title">{editingProduct ? "Edit product" : "Create product"}</h2></div><button className="modal-close inline-close" onClick={() => setProductEditor(false)} aria-label="Close"><X size={19}/></button></div><form onSubmit={saveProduct} className="admin-form"><label>Product name<input required value={productName} onChange={e => setProductName(e.target.value)} maxLength={140}/></label><label>Description<textarea rows={4} value={productDescription} onChange={e => setProductDescription(e.target.value)} maxLength={5000}/></label><div className="form-two"><label>Price (ZAR)<input required type="number" min="0" step="0.01" value={productPrice} onChange={e => setProductPrice(e.target.value)}/></label><label>SKU<input value={productSku} onChange={e => setProductSku(e.target.value)} maxLength={100}/></label></div><label>Collection<select value={productCollection} onChange={e => setProductCollection(e.target.value)}><option value="">No collection</option>{collections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Product image<input type="url" placeholder="https://…" value={productImage} onChange={e => setProductImage(e.target.value)}/><span className="field-hint">Or upload a product image (max 8 MB).</span><input type="file" accept="image/*" onChange={e => void uploadProductImage(e.target.files?.[0])} disabled={!supabase || uploading}/>{uploading && <span className="field-hint">Uploading image…</span>}{productImage && <img className="upload-preview" src={productImage} alt="Product preview"/>}</label><div className="form-three"><label>Size<input value={productSize} onChange={e => setProductSize(e.target.value)} maxLength={40}/></label><label>Colour<input value={productColour} onChange={e => setProductColour(e.target.value)} maxLength={40}/></label><label>Stock<input type="number" min="0" step="1" value={productStock} onChange={e => setProductStock(e.target.value)}/></label></div><label>Publication status<select value={productStatus} onChange={e => setProductStatus(e.target.value as "draft" | "active")}><option value="draft">Draft — not public</option><option value="active">Publish product</option></select></label><p className="field-hint">Only publish products with confirmed prices, real imagery, accurate sizing and a fulfilment plan. Payment collection is not enabled yet.</p><div className="admin-form-actions"><button type="button" className="button-outline-dark" onClick={() => setProductEditor(false)}>Cancel</button><button className="button-dark" disabled={busy || uploading}>{busy ? "Saving…" : "Save product"} <Check size={15}/></button></div></form></section></div>}
+
+    {collectionEditor && <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setCollectionEditor(false); }}><section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="collection-editor-title"><div className="admin-modal-heading"><div><p className="eyebrow">COLLECTION MANAGEMENT</p><h2 id="collection-editor-title">Add collection</h2></div><button className="modal-close inline-close" onClick={() => setCollectionEditor(false)} aria-label="Close"><X size={19}/></button></div><form className="admin-form" onSubmit={saveCollection}><label>Collection name<input required value={collectionName} onChange={e => setCollectionName(e.target.value)} maxLength={100}/></label><label>Slug<input placeholder="generated-from-name" value={collectionSlug} onChange={e => setCollectionSlug(e.target.value)} maxLength={120}/></label><label>Description<textarea rows={3} value={collectionDescription} onChange={e => setCollectionDescription(e.target.value)} maxLength={2000}/></label><label>Status<select value={collectionStatus} onChange={e => setCollectionStatus(e.target.value as "draft" | "active")}><option value="draft">Draft</option><option value="active">Active</option></select></label><div className="admin-form-actions"><button type="button" className="button-outline-dark" onClick={() => setCollectionEditor(false)}>Cancel</button><button className="button-dark" disabled={busy}>Save collection <Check size={15}/></button></div></form></section></div>}
+
+    <div className="floating-help"><span>DAWG CLOTHING</span><span>THE WORK SPEAKS.</span></div>
+  </div>;
 }
 
-function sectionDescription(section: Section, signedIn: boolean) {
-  if (section === "Home") return signedIn ? "Your space to reconnect, discover and make things happen." : "A space for the things and people that make life feel more like yours.";
-  if (section === "Discover") return "Follow your curiosity. Your next favourite thing could start here.";
-  if (section === "Communities") return "Shared interests are a good place to begin.";
-  if (section === "Messages") return "Good conversations make the distance feel smaller.";
-  return "A little space that's yours.";
+function ProductGrid({ products, onOpen, onAdd }: { products: Product[]; onOpen: (p: Product) => void; onAdd: (p: Product) => void }) {
+  return <div className="product-grid">{products.map((p, i) => <article className="product-card" key={p.id}><button className="product-card-image" onClick={() => onOpen(p)} aria-label={`View ${p.name}`}>{p.image_url ? <img loading="lazy" src={p.image_url} alt={p.name}/> : <div className={`product-placeholder product-tone-${i % 4}`}><span>DAWG</span><small>{p.collections?.name || "CLOTHING"}</small></div>}<span className="product-view">View piece <ArrowUpRight size={14}/></span></button><div className="product-card-info"><div><p className="product-category">{p.collections?.name || "DAWG CLOTHING"}</p><button className="product-title" onClick={() => onOpen(p)}>{p.name}</button><span className="product-price">{money(p.price_cents, p.currency)}</span></div><button className="quick-add" aria-label={`View ${p.name} options`} onClick={() => onOpen(p)}><Plus size={17}/></button></div></article>)}</div>;
 }
-
-function HomeContent({ openAuth, setSection, saved, setSaved }: { openAuth: (m: "signin" | "signup") => void; setSection: (s: Section) => void; saved: string[]; setSaved: (s: string[]) => void }) {
-  return <div className="home-grid"><section className="main-column"><div className="section-kicker"><span>YOUR NEXT STEP</span><span className="kicker-line"/></div><button className="feature-card" onClick={() => setSection("Discover")}><div className="feature-top"><span className="feature-tag">A PLACE TO BEGIN</span><ArrowUpRightIcon/></div><div className="feature-illustration"><div className="feature-circle circle-one"/><div className="feature-circle circle-two"/><div className="feature-asterisk">✳</div><div className="feature-word">go<br/>together<span>.</span></div></div><div className="feature-bottom"><div><h3>Follow what moves you.</h3><p>Explore interests, people and communities that feel like your kind of thing.</p></div><span className="round-arrow"><ArrowRight size={18}/></span></div></button><div className="section-kicker below-kicker"><span>MAKE IT YOURS</span><span className="kicker-line"/></div><div className="action-row"><button className="action-card" onClick={() => openAuth("signup")}><span className="action-icon"><Users size={19}/></span><strong>Find your people</strong><span>Connections begin with a hello.</span><ArrowRight size={15}/></button><button className="action-card" onClick={() => setSection("Communities")}><span className="action-icon action-icon-pink"><Layers3 size={19}/></span><strong>Build a circle</strong><span>Make space for shared interests.</span><ArrowRight size={15}/></button></div></section><section className="side-column"><div className="section-kicker"><span>SMALL THINGS, BIG STARTS</span></div><div className="starter-list"><div className="starter-item"><span className="starter-number">01</span><div><strong>Be curious.</strong><p>Follow an interest you haven't made time for yet.</p></div></div><div className="starter-item"><span className="starter-number">02</span><div><strong>Say hello.</strong><p>One honest conversation can open a new door.</p></div></div><div className="starter-item"><span className="starter-number">03</span><div><strong>Show up.</strong><p>Belonging grows when we make room for each other.</p></div></div></div><div className="saved-card"><div className="saved-card-head"><Bookmark size={17}/><span>YOUR SHORTLIST</span></div><h3>Keep what inspires you.</h3><p>Save a starting point and come back when you're ready.</p><button onClick={() => setSaved(saved.includes("starter") ? saved.filter(x => x !== "starter") : [...saved, "starter"])}>{saved.includes("starter") ? <><CheckCircle2 size={15}/> Saved for later</> : <><Plus size={15}/> Save this reminder</>}</button></div></section></div>;
+function VariantPicker({ product, onAdd }: { product: Product; onAdd: (v?: Variant) => void }) {
+  const variants = (product.product_variants || []).filter(v => v.status === "active");
+  const [selected, setSelected] = useState(variants[0]?.id || "");
+  const variant = variants.find(v => v.id === selected);
+  const unavailable = variants.length > 0 && (!variant || (variant.track_inventory && variant.stock_on_hand < 1));
+  return <div className="variant-picker">{variants.length > 0 && <><label>Size / colour<select value={selected} onChange={e => setSelected(e.target.value)}>{variants.map(v => <option key={v.id} value={v.id} disabled={v.track_inventory && v.stock_on_hand < 1}>{[v.size, v.colour].filter(Boolean).join(" / ") || "Standard"}{v.track_inventory && v.stock_on_hand < 1 ? " — Sold out" : ""}</option>)}</select></label><p className="variant-stock">{variant?.track_inventory ? (variant.stock_on_hand > 0 ? "Available" : "Sold out") : "Availability confirmed at checkout"}</p></>}<button className="button-dark add-to-bag" disabled={unavailable} onClick={() => onAdd(variant)}>{unavailable ? "Sold out" : "Add to bag"} <ShoppingBag size={16}/></button><p className="detail-note"><Truck size={16}/> Shipping and returns information will be published before launch.</p></div>;
 }
-
-function ArrowUpRightIcon() { return <ArrowDownRight size={17} className="tilted-arrow"/>; }
-
-function DiscoverContent({ query, setSection, openAuth }: { query: string; setSection: (s: Section) => void; openAuth: (m: "signin" | "signup") => void }) {
-  const [filter, setFilter] = useState("All");
-  const filters = ["All", "People", "Interests", "Communities"];
-  const cards = [
-    { id:"people", type:"People", icon:<Users size={20}/>, title:"People who get it", text:"Meet people who share the things you care about.", color:"lavender" },
-    { id:"interests", type:"Interests", icon:<Sparkles size={20}/>, title:"Follow a curiosity", text:"Give a new interest a little room to grow.", color:"peach" },
-    { id:"communities", type:"Communities", icon:<Layers3 size={20}/>, title:"Find your circle", text:"Shared interests can become real connections.", color:"mint" },
-  ].filter(c => (filter === "All" || c.type === filter) && (c.title+" "+c.text).toLowerCase().includes(query.toLowerCase()));
-  return <><div className="filter-tabs">{filters.map(f => <button key={f} className={filter === f ? "selected" : ""} onClick={() => setFilter(f)}>{f}</button>)}</div><div className="discover-grid">{cards.map(c => <article className="discover-card" key={c.id}><div className={`discover-icon ${c.color}`}>{c.icon}</div><div className="card-overline">{c.type}</div><h3>{c.title}</h3><p>{c.text}</p><button onClick={() => c.id === "communities" ? setSection("Communities") : openAuth("signup")}>Explore <ArrowRight size={15}/></button></article>)}</div><p className="data-note"><ShieldCheck size={15}/> This is the initial discovery experience. Live recommendations will appear when real platform content is connected.</p></>;
-}
-
-function CommunitiesContent({ openAuth }: { openAuth: (m: "signin" | "signup") => void }) {
-  return <div className="empty-state"><div className="empty-symbol"><Users size={25}/></div><div className="eyebrow muted-eyebrow">YOUR PEOPLE, YOUR SPACE</div><h3>Good things grow in good company.</h3><p>Community creation and discovery will be powered by your DAWG account and Supabase data. No placeholder communities or invented member counts.</p><button className="button button-dark" onClick={() => openAuth("signup")}>Get started <ArrowRight size={16}/></button></div>;
-}
-
-function MessagesContent({ openAuth }: { openAuth: (m: "signin" | "signup") => void }) {
-  return <div className="empty-state"><div className="empty-symbol"><MessageCircle size={25}/></div><div className="eyebrow muted-eyebrow">MAKE THE FIRST MOVE</div><h3>Every good connection starts somewhere.</h3><p>Private messaging needs authenticated users, conversation tables and strict database policies. We'll connect it after the core account foundation is verified.</p><button className="button button-dark" onClick={() => openAuth("signup")}>Create your account <ArrowRight size={16}/></button></div>;
-}
-
-function ProfileContent({ session, displayName, email, openAuth }: { session: Session | null; displayName: string; email: string; openAuth: (m: "signin" | "signup") => void }) {
-  if (!session) return <div className="empty-state"><div className="empty-symbol"><UserRound size={25}/></div><div className="eyebrow muted-eyebrow">YOUR CORNER OF DAWG</div><h3>Your profile starts with you.</h3><p>Create an account to establish your identity. Profile editing, privacy settings and avatar uploads will be connected to your database-backed account.</p><button className="button button-dark" onClick={() => openAuth("signup")}>Create profile <ArrowRight size={16}/></button></div>;
-  return <div className="profile-panel"><div className="profile-cover"/><div className="profile-details"><div className="profile-avatar">{displayName.slice(0,1).toUpperCase()}</div><h3>{displayName}</h3><p>{email}</p><span className="verified-label"><CheckCircle2 size={14}/> Signed in with Supabase</span><div className="profile-note">Your account is connected. The next milestone is creating the profile table and applying owner-only row-level security policies.</div></div></div>;
-}
-
-export default App;
