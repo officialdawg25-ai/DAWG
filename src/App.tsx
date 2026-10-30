@@ -128,7 +128,6 @@ export default function App() {
   useEffect(() => { localStorage.setItem("dawg-cart", JSON.stringify(cart)); }, [cart]);
   const activeProducts = useMemo(() => products.filter(p => p.status === "active" && Boolean(p.published_at) && new Date(p.published_at as string).getTime() <= Date.now()).filter(p => { const matchesSearch = !search || [p.name, p.description || "", p.sku || "", p.collections?.name || ""].join(" ").toLowerCase().includes(search.toLowerCase()); const matchesCollection = !route.slug || p.collections?.slug === route.slug || p.collection_id === collections.find(c => c.slug === route.slug)?.id; return matchesSearch && matchesCollection; }), [products, search, route.slug, collections]);
   const featured = activeProducts.filter(p => p.featured).slice(0, 4);
-  const shownFeatured = featured.length ? featured : activeProducts.slice(0, 4);
   const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const cartTotal = cart.reduce((sum, line) => sum + (line.variant?.price_cents ?? line.product.price_cents) * line.quantity, 0);
   const collectionDisplay = collections.filter(c => c.status === "active").length ? collections.filter(c => c.status === "active").map(c => ({ name: c.name, descriptor: c.description || "Explore the collection", detail: c.description || "", slug: c.slug })) : collectionsFallback.map(c => ({ ...c, slug: slugify(c.name) }));
