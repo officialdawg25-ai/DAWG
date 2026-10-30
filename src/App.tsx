@@ -262,8 +262,8 @@ export default function App() {
             return <button key={item.name} className={`signature-card signature-${item.tone}`} onClick={() => go("shop", source?.slug || item.slug)}>
               <span className="signature-card-top"><span>{item.number} / COLLECTION</span><ArrowUpRight size={19}/></span>
               {source?.image_url && <img className="signature-card-image" src={source.image_url} alt={`${item.name} collection`} loading="lazy"/>}
-              <span className="signature-card-monogram" aria-hidden="true">{item.name.slice(0,1)}</span>
-              <span className="signature-card-bottom"><span className="signature-card-copy"><small>{item.descriptor}</small><strong>{item.name}</strong><span>{item.copy}</span></span><span className="signature-card-cta">DISCOVER THE COLLECTION <ArrowUpRight size={14}/></span></span>
+              {!source?.image_url && <span className="signature-card-monogram" aria-hidden="true">{item.name.slice(0,1)}</span>}
+              <span className="signature-card-bottom"><span className="signature-card-copy"><small>{item.descriptor}</small><strong>{item.name}</strong><span>{item.copy}</span></span><span className="signature-card-cta">EXPLORE {item.name} <ArrowUpRight size={14}/></span></span>
             </button>;
           })}
         </div>
@@ -272,7 +272,7 @@ export default function App() {
         <div className="edit-heading-row"><div><p className="eyebrow">THE EDIT / SELECTED BY DAWG</p><h2>In the <em>spotlight.</em></h2><p className="edit-intro-copy">A considered selection from the current collection.</p></div><button className="text-link" onClick={() => go("shop")}>Shop all <ArrowRight size={15}/></button></div>
         {loading ? <div className="edit-loading"><LoaderCircle className="spin" size={20}/><span>Preparing the edit…</span></div> : featured.length ? <div className="edit-products"><ProductGrid products={featured} onOpen={p => go("product", p.slug)}/></div> : <div className="edit-empty">
           <div className="edit-empty-art"><span>D.</span><small>CURATED BY DAWG</small><i>THE EDIT</i></div>
-          <div className="edit-empty-copy"><p className="eyebrow">CURATED BY DAWG</p><h3>The edit is<br/><em>being prepared.</em></h3><p>Featured products selected by the DAWG team will appear here. In the meantime, explore the full collection.</p><button className="button-dark" onClick={() => go("shop")}>Explore all products <ArrowRight size={15}/></button></div>
+          <div className="edit-empty-copy"><p className="eyebrow">CURATED BY DAWG</p><h3>A considered<br/><em>selection.</em></h3><p>Nothing more. Nothing less. The next edit is taking shape. Explore the full DAWG collection while we prepare the next selection.</p><button className="button-dark" onClick={() => go("shop")}>Explore all products <ArrowRight size={15}/></button></div>
         </div>}
       </section>
       <section className="closing-banner"><div><p className="eyebrow">FOR THE WORK IN PROGRESS</p><h2>Become who<br/><em>you said you'd be.</em></h2></div><button className="button-light" onClick={() => go("story")}>The DAWG mindset <ArrowUpRight size={16}/></button><span className="closing-stamp">D / A / W / G</span></section></>}
@@ -313,7 +313,7 @@ export default function App() {
 }
 
 function ProductGrid({ products, onOpen }: { products: Product[]; onOpen: (p: Product) => void }) {
-  return <div className="product-grid">{products.map((p, i) => <article className="product-card" key={p.id}><button className="product-card-image" onClick={() => onOpen(p)} aria-label={`View ${p.name}`}>{p.image_url ? <img loading="lazy" src={p.image_url} alt={p.name}/> : <div className={`product-placeholder product-tone-${i % 4}`}><span>DAWG</span><small>{p.collections?.name || "CLOTHING"}</small></div>}<span className="product-view">View piece <ArrowUpRight size={14}/></span></button><div className="product-card-info"><div><p className="product-category">{p.collections?.name || "DAWG CLOTHING"}</p><button className="product-title" onClick={() => onOpen(p)}>{p.name}</button><span className="product-price">{money(p.price_cents, p.currency)}</span></div><button className="quick-add" aria-label={`View ${p.name} options`} onClick={() => onOpen(p)}><Plus size={17}/></button></div></article>)}</div>;
+  return <div className="product-grid">{products.map((p, i) => <article className="product-card" key={p.id}><button className="product-card-image" onClick={() => onOpen(p)} aria-label={`View ${p.name}`}>{p.image_url ? <img loading="lazy" src={p.image_url} alt={p.name}/> : <div className={`product-placeholder product-tone-${i % 4}`}><span>DAWG</span><small>{p.collections?.name || "CLOTHING"}</small></div>}<span className="product-view">View piece <ArrowUpRight size={14}/></span></button><div className="product-card-info"><div><p className="product-category">{p.collections?.name || "DAWG CLOTHING"}</p><button className="product-title" onClick={() => onOpen(p)}>{p.name}</button><span className="product-price">{money(p.price_cents, p.currency)}</span></div><span className="product-card-arrow" aria-hidden="true"><ArrowUpRight size={16}/></span></div></article>)}</div>;
 }
 function VariantPicker({ product, onAdd }: { product: Product; onAdd: (v?: Variant) => void }) {
   const variants = (product.product_variants || []).filter(v => v.status === "active");
