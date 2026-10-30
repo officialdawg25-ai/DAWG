@@ -251,11 +251,30 @@ export default function App() {
         <div className="hero-bottom"><span>NO SHORTCUTS. NO HANDOUTS.</span><span>THE WORK SPEAKS.</span><span>SCROLL TO EXPLORE ↓</span></div>
       </section>
       <section className="manifesto-strip"><span className="strip-label">THE DAWG CODE</span><p>Discipline is a decision.<br/><span>Excellence is a practice.</span></p><button onClick={() => go("story")}>Read our philosophy <ArrowUpRight size={15}/></button></section>
-      <section className="collection-section section-pad"><div className="section-heading"><div><p className="eyebrow">THE COLLECTIONS</p><h2>Five expressions.<br/><em>One standard.</em></h2></div><button className="text-link" onClick={() => go("collections")}>Explore all collections <ArrowRight size={15}/></button></div>
-        <div className="collection-grid">{collectionDisplay.map((c, i) => { return <button key={c.slug} className={`collection-tile tile-${(i % 5) + 1}`} onClick={() => go("shop", c.slug)}><span className="tile-number">0{i + 1} / COLLECTION</span><span className="tile-glyph">{c.name.slice(0,1)}</span><span className="tile-bottom"><span><strong>{c.name}</strong><small>{c.descriptor}</small></span><ArrowUpRight size={18}/></span></button>; })}</div>
+      <section className="signature-section section-pad">
+        <div className="editorial-kicker"><span>THE SIGNATURE COLLECTIONS</span><span>01 — 02 / THE DAWG UNIVERSE</span></div>
+        <div className="signature-intro"><h2>Two ways to<br/><em>move forward.</em></h2><p>Different disciplines. One standard. Discover the expressions that shape the way you think, work and move.</p></div>
+        <div className="signature-grid">
+          {[
+            {name:"IVY",number:"01",descriptor:"KNOWLEDGE / STRATEGY / PERFORMANCE",copy:"Knowledge, strategic thinking and elite performance.",slug:"ivy",tone:"ivy"},
+            {name:"GRIT",number:"02",descriptor:"DISCIPLINE / RESILIENCE / CONSISTENCY",copy:"Discipline, resilience and consistency.",slug:"grit",tone:"grit"}
+          ].map(item => {
+            const source = collections.find(c => c.name.toLowerCase() === item.name.toLowerCase());
+            return <button key={item.name} className={`signature-card signature-${item.tone}`} onClick={() => go("shop", source?.slug || item.slug)}>
+              <span className="signature-card-top"><span>{item.number} / COLLECTION</span><ArrowUpRight size={19}/></span>
+              {source?.image_url && <img className="signature-card-image" src={source.image_url} alt={`${item.name} collection`} loading="lazy"/>}
+              <span className="signature-card-monogram" aria-hidden="true">{item.name.slice(0,1)}</span>
+              <span className="signature-card-bottom"><span className="signature-card-copy"><small>{item.descriptor}</small><strong>{item.name}</strong><span>{item.copy}</span></span><span className="signature-card-cta">DISCOVER THE COLLECTION <ArrowUpRight size={14}/></span></span>
+            </button>;
+          })}
+        </div>
       </section>
-      <section className="product-section section-pad"><div className="section-heading"><div><p className="eyebrow">THE CURRENT LINEUP</p><h2>Made to move<br/><em>with intention.</em></h2></div><button className="text-link" onClick={() => go("shop")}>Shop all <ArrowRight size={15}/></button></div>
-        {loading ? <div className="empty-state"><LoaderCircle className="spin" size={22}/><p>Loading the collection…</p></div> : shownFeatured.length ? <ProductGrid products={shownFeatured} onOpen={p => go("product", p.slug)} /> : <div className="empty-catalogue"><span className="empty-mark">D.</span><div><p className="eyebrow">THE NEXT DROP IS BEING BUILT</p><h3>Good things take work.</h3><p>There are no published products just yet. The DAWG catalogue will appear here when products are ready.</p></div><button className="button-outline-dark" onClick={() => go("collections")}>Explore the collections <ArrowRight size={15}/></button></div>}
+      <section className="edit-section section-pad">
+        <div className="edit-heading-row"><div><p className="eyebrow">THE EDIT / SELECTED BY DAWG</p><h2>In the <em>spotlight.</em></h2><p className="edit-intro-copy">A considered selection from the current collection.</p></div><button className="text-link" onClick={() => go("shop")}>Shop all <ArrowRight size={15}/></button></div>
+        {loading ? <div className="edit-loading"><LoaderCircle className="spin" size={20}/><span>Preparing the edit…</span></div> : featured.length ? <div className="edit-products"><ProductGrid products={featured} onOpen={p => go("product", p.slug)}/></div> : <div className="edit-empty">
+          <div className="edit-empty-art"><span>D.</span><small>CURATED BY DAWG</small><i>THE EDIT</i></div>
+          <div className="edit-empty-copy"><p className="eyebrow">CURATED BY DAWG</p><h3>The edit is<br/><em>being prepared.</em></h3><p>Featured products selected by the DAWG team will appear here. In the meantime, explore the full collection.</p><button className="button-dark" onClick={() => go("shop")}>Explore all products <ArrowRight size={15}/></button></div>
+        </div>}
       </section>
       <section className="closing-banner"><div><p className="eyebrow">FOR THE WORK IN PROGRESS</p><h2>Become who<br/><em>you said you'd be.</em></h2></div><button className="button-light" onClick={() => go("story")}>The DAWG mindset <ArrowUpRight size={16}/></button><span className="closing-stamp">D / A / W / G</span></section></>}
 
